@@ -49,6 +49,49 @@ The autopilot applies opinionated best practices and manages your platform autom
 | VM drain shutdown inhibitor | Attempts to gracefully shutdown KubeVirt VMs before allowing the node to shut down | DP | <details><summary>opt-in</summary><code>platform.kubevirt.io/enable-vm-drain-shutdown-inhibitor=true</code></details> | - |
 <!-- END FEATURE STATUS -->
 
+## Opt-In Features
+
+Technology Preview (TP) and Developer Preview (DP) capabilities are not applied
+by default; enable them with an annotation on the HyperConverged CR. Disabling
+stops autopilot from managing the feature but does not undo cluster changes —
+cleanup of created resources is manual.
+
+### Enable
+
+Set the annotation on `HyperConverged/kubevirt-hyperconverged` (in `openshift-cnv`):
+
+```bash
+oc annotate hyperconverged kubevirt-hyperconverged -n openshift-cnv \
+  platform.kubevirt.io/enable-<feature>=true
+```
+
+Autopilot reconciles and creates or updates the managed resources. Verify with
+`oc logs -n openshift-cnv deploy/virt-platform-autopilot`.
+
+### Disable
+
+Remove the opt-in annotation (trailing `-`):
+
+```bash
+oc annotate hyperconverged kubevirt-hyperconverged -n openshift-cnv \
+  platform.kubevirt.io/enable-<feature>-
+```
+
+This stops autopilot from managing that feature. It does **not** delete resources
+already created.
+
+Resources the feature already created must be removed manually. For example,
+MachineConfig-based opt-ins (THP, KSM, swap) require deleting the autopilot
+MachineConfigs and waiting for MCO to roll out the reverted node config:
+
+```bash
+oc delete mc <machineconfig-name>
+oc get mcp
+```
+
+The same applies to other shared cluster objects the feature may have changed
+(for example `cluster-monitoring-config` for KSM monitoring).
+
 ## Quick Start
 
 ### Prerequisites
