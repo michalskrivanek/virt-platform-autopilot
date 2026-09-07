@@ -99,22 +99,47 @@ func TestMonitoringUIPluginWithIncidents(t *testing.T) {
 	annotations := map[string]string{
 		"platform.kubevirt.io/enable-incident-detection": "true",
 	}
-	rendered := renderObservabilityAsset(t, "monitoring-ui-plugin", annotations)
 
-	persesEnabled, found, _ := unstructured.NestedBool(rendered.Object, "spec", "monitoring", "perses", "enabled")
+	// Render base asset (always applied)
+	baseRendered := renderObservabilityAsset(t, "monitoring-ui-plugin", annotations)
+
+	persesEnabled, found, _ := unstructured.NestedBool(baseRendered.Object, "spec", "monitoring", "perses", "enabled")
 	if !found {
-		t.Fatal("spec.monitoring.perses.enabled not found")
+		t.Fatal("base asset: spec.monitoring.perses.enabled not found")
 	}
 	if !persesEnabled {
-		t.Error("spec.monitoring.perses.enabled should be true")
+		t.Error("base asset: spec.monitoring.perses.enabled should be true")
 	}
 
-	incidentsEnabled, found, _ := unstructured.NestedBool(rendered.Object, "spec", "monitoring", "incidents", "enabled")
+	// Base asset should not have incidents field
+	_, found, _ = unstructured.NestedBool(baseRendered.Object, "spec", "monitoring", "incidents", "enabled")
+	if found {
+		t.Error("base asset: spec.monitoring.incidents should NOT be present")
+	}
+
+	// Render incidents asset (opt-in, applied after base)
+	incidentsRendered := renderObservabilityAsset(t, "monitoring-ui-plugin-incidents", annotations)
+
+	// Incidents asset should have both perses and incidents
+	persesEnabled, found, _ = unstructured.NestedBool(incidentsRendered.Object, "spec", "monitoring", "perses", "enabled")
 	if !found {
-		t.Fatal("spec.monitoring.incidents.enabled not found when annotation is set")
+		t.Fatal("incidents asset: spec.monitoring.perses.enabled not found")
+	}
+	if !persesEnabled {
+		t.Error("incidents asset: spec.monitoring.perses.enabled should be true")
+	}
+
+	incidentsEnabled, found, _ := unstructured.NestedBool(incidentsRendered.Object, "spec", "monitoring", "incidents", "enabled")
+	if !found {
+		t.Fatal("incidents asset: spec.monitoring.incidents.enabled not found when annotation is set")
 	}
 	if !incidentsEnabled {
-		t.Error("spec.monitoring.incidents.enabled should be true when annotation is set")
+		t.Error("incidents asset: spec.monitoring.incidents.enabled should be true when annotation is set")
+	}
+
+	// Both should target the same resource
+	if baseRendered.GetName() != incidentsRendered.GetName() {
+		t.Errorf("assets target different resources: base=%s, incidents=%s", baseRendered.GetName(), incidentsRendered.GetName())
 	}
 }
 
@@ -122,11 +147,37 @@ func TestMonitoringUIPluginIncidentsFalseAnnotation(t *testing.T) {
 	annotations := map[string]string{
 		"platform.kubevirt.io/enable-incident-detection": "false",
 	}
-	rendered := renderObservabilityAsset(t, "monitoring-ui-plugin", annotations)
 
-	_, found, _ := unstructured.NestedBool(rendered.Object, "spec", "monitoring", "incidents", "enabled")
+	// Base asset should always render
+	baseRendered := renderObservabilityAsset(t, "monitoring-ui-plugin", annotations)
+
+	persesEnabled, found, _ := unstructured.NestedBool(baseRendered.Object, "spec", "monitoring", "perses", "enabled")
+	if !found {
+		t.Fatal("base asset: spec.monitoring.perses.enabled not found")
+	}
+	if !persesEnabled {
+		t.Error("base asset: spec.monitoring.perses.enabled should be true")
+	}
+
+	// Base asset should not have incidents
+	_, found, _ = unstructured.NestedBool(baseRendered.Object, "spec", "monitoring", "incidents", "enabled")
 	if found {
-		t.Error("spec.monitoring.incidents should NOT be present when annotation is 'false'")
+		t.Error("base asset: spec.monitoring.incidents should NOT be present when annotation is 'false'")
+	}
+
+	// Incidents asset should not render when annotation is "false"
+	// (In real reconciliation, this asset would be skipped due to conditions not met)
+	// Here we're just verifying the template doesn't conditionally hide it
+	incidentsRendered := renderObservabilityAsset(t, "monitoring-ui-plugin-incidents", annotations)
+
+	// The incidents asset template is unconditional, so it always includes incidents
+	// The filtering happens at the asset selection level (conditions in metadata.yaml)
+	incidentsEnabled, found, _ := unstructured.NestedBool(incidentsRendered.Object, "spec", "monitoring", "incidents", "enabled")
+	if !found {
+		t.Error("incidents asset template should always include incidents field (filtering happens at reconcile level)")
+	}
+	if !incidentsEnabled {
+		t.Error("incidents asset template should always set incidents.enabled to true")
 	}
 }
 
