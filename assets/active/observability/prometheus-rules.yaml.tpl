@@ -86,7 +86,7 @@ spec:
             operator: virt-platform-autopilot
             kubernetes_operator_part_of: kubevirt
             kubernetes_operator_component: autopilot
-            operator_health_impact: warning
+            operator_health_impact: none
           annotations:
             summary: "Missing optional CRD: {{`{{ $labels.kind }}.{{ $labels.version }}.{{ $labels.group }}`}}"
             description: |-
