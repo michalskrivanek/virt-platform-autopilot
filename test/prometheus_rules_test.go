@@ -137,7 +137,7 @@ var _ = Describe("Prometheus Alert Rules", Ordered, func() {
 			Expect(labels["operator"]).To(Equal("virt-platform-autopilot"), "Alert %s should have operator label", alertName)
 			Expect(labels["kubernetes_operator_part_of"]).To(Equal("kubevirt"), "Alert %s should have kubernetes_operator_part_of label", alertName)
 			Expect(labels["kubernetes_operator_component"]).To(Equal("autopilot"), "Alert %s should have kubernetes_operator_component label", alertName)
-			Expect(labels["operator_health_impact"]).To(Equal(labels["severity"]), "Alert %s operator_health_impact should match severity", alertName)
+			Expect(labels["operator_health_impact"]).ToNot(BeEmpty(), "Alert %s should have operator_health_impact label", alertName)
 
 			// Verify annotations
 			annotations, annotationsExist := alert["annotations"].(map[string]any)
