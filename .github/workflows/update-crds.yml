@@ -114,7 +114,7 @@ jobs:
           commit_body=$(echo "$changed_files" | sed 's/^/- /')
 
           git add test/crds/
-          printf 'chore: update CRDs from upstream\n\nUpdated CRD files:\n%s\n' "$commit_body" | git commit -F -
+          printf 'chore: update CRDs from upstream\n\nUpdated CRD files:\n%s\n' "$commit_body" | git commit -s -F -
           git push origin "${{ steps.existing_pr.outputs.branch }}"
 
       - name: Create branch and open PR
@@ -136,7 +136,7 @@ jobs:
           commit_body=$(echo "$changed_files" | sed 's/^/- /')
 
           git add test/crds/
-          printf 'chore: update CRDs from upstream\n\nUpdated CRD files:\n%s\n' "$commit_body" | git commit -F -
+          printf 'chore: update CRDs from upstream\n\nUpdated CRD files:\n%s\n' "$commit_body" | git commit -s -F -
 
           git push origin "$branch"
 
