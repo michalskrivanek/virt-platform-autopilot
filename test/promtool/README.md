@@ -57,9 +57,11 @@ The tests validate:
    - ✅ Alert does NOT fire when no thrashing occurs
 
 3. **VirtPlatformAutopilotDependencyMissing (Warning)**
-   - ✅ Alert fires after 5 minutes of missing_dependency == 1
+   - ✅ Alert fires after 5 minutes of missing_dependency == 1 joined with dependency_opted_in == 1
    - ✅ Alert does NOT fire for transient CRD absence (< 5min)
    - ✅ Alert does NOT fire when CRD is present (missing_dependency == 0)
+   - ✅ Alert does NOT fire when the feature is not enabled (dependency_opted_in == 0)
+   - ✅ Alert resolves when the user opts out while the CRD is still missing
 
 ## What promtool Tests
 

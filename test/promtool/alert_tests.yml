@@ -97,6 +97,8 @@ tests:
       # Time 6: value=1 - been missing for 5 minutes -> ALERT FIRES
       - series: 'kubevirt_autopilot_missing_dependency{group="remediation.medik8s.io",version="v1alpha1",kind="NodeHealthCheck"}'
         values: '0 1 1 1 1 1 1 1 1 1 1 1'
+      - series: 'kubevirt_autopilot_dependency_opted_in{group="remediation.medik8s.io",version="v1alpha1",kind="NodeHealthCheck"}'
+        values: '1 1 1 1 1 1 1 1 1 1 1 1'
 
     alert_rule_test:
       # Before 5min: Alert should NOT be firing
@@ -119,6 +121,62 @@ tests:
               group: remediation.medik8s.io
               version: v1alpha1
               kind: NodeHealthCheck
+
+  # ============================================================================
+  # Test: VirtPlatformAutopilotDependencyMissing - No Alert When Not Opted In
+  # CRD missing but the feature is not enabled should not fire the alert
+  # ============================================================================
+
+  - interval: 1m
+    input_series:
+      - series: 'kubevirt_autopilot_missing_dependency{group="metallb.io",version="v1",kind="MetalLB"}'
+        values: '1 1 1 1 1 1 1 1 1 1 1 1'
+      - series: 'kubevirt_autopilot_dependency_opted_in{group="metallb.io",version="v1",kind="MetalLB"}'
+        values: '0 0 0 0 0 0 0 0 0 0 0 0'
+
+    alert_rule_test:
+      - eval_time: 10m
+        alertname: VirtPlatformAutopilotDependencyMissing
+        exp_alerts: []
+
+  # ============================================================================
+  # Test: VirtPlatformAutopilotDependencyMissing - Opting Out Resolves The Alert
+  # The CRD stays missing throughout; the user disables the feature at t=8m.
+  # Guards the reason opt-in state is a value and not a label: a label would
+  # orphan the opted-in series and keep the alert firing forever.
+  # ============================================================================
+
+  - interval: 1m
+    input_series:
+      - series: 'kubevirt_autopilot_missing_dependency{group="metallb.io",version="v1",kind="MetalLB"}'
+        values: '1 1 1 1 1 1 1 1 1 1 1 1 1 1 1'
+      - series: 'kubevirt_autopilot_dependency_opted_in{group="metallb.io",version="v1",kind="MetalLB"}'
+        values: '1 1 1 1 1 1 1 1 0 0 0 0 0 0 0'
+
+    alert_rule_test:
+      # Feature enabled and CRD missing for >5m: firing
+      - eval_time: 7m
+        alertname: VirtPlatformAutopilotDependencyMissing
+        exp_alerts:
+          - exp_labels:
+              severity: warning
+              operator_health_impact: none
+              kubernetes_operator_part_of: kubevirt
+              kubernetes_operator_component: autopilot
+              operator: virt-platform-autopilot
+              group: metallb.io
+              version: v1
+              kind: MetalLB
+
+      # User opted out at 8m: alert resolves even though the CRD is still absent
+      - eval_time: 10m
+        alertname: VirtPlatformAutopilotDependencyMissing
+        exp_alerts: []
+
+      # And stays resolved
+      - eval_time: 14m
+        alertname: VirtPlatformAutopilotDependencyMissing
+        exp_alerts: []
 
   # ============================================================================
   # Test: Transient Failures Should NOT Trigger Alerts
@@ -174,6 +232,8 @@ tests:
         values: '0 0 0'
       - series: 'kubevirt_autopilot_missing_dependency{group="test",version="v1",kind="Test"}'
         values: '0 0 0'
+      - series: 'kubevirt_autopilot_dependency_opted_in{group="test",version="v1",kind="Test"}'
+        values: '1 1 1'
 
     alert_rule_test:
       # All alerts should evaluate without errors (even if not firing)

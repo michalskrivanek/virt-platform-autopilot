@@ -61,12 +61,12 @@ func NewCRDChecker(c client.Reader) *CRDChecker {
 	}
 }
 
-// IsCRDInstalled checks if a CRD is installed in the cluster
+// IsCRDInstalled checks if a CRD is installed in the cluster.
+// Metric emission is handled separately via ReportDependencyMetric so callers
+// can gate alerts on opt-in state.
 func (c *CRDChecker) IsCRDInstalled(ctx context.Context, crdName string) (bool, error) {
 	// Check cache first
 	if exists, found := c.cache.get(crdName); found {
-		// Update metrics from cache (no API call needed)
-		c.updateDependencyMetric(crdName, !exists)
 		return exists, nil
 	}
 
@@ -78,8 +78,6 @@ func (c *CRDChecker) IsCRDInstalled(ctx context.Context, crdName string) (bool, 
 		if errors.IsNotFound(err) {
 			// CRD not found - cache negative result
 			c.cache.set(crdName, false)
-			// Emit missing dependency metric
-			c.updateDependencyMetric(crdName, true)
 			return false, nil
 		}
 		// Other error - don't cache, return error
@@ -88,14 +86,14 @@ func (c *CRDChecker) IsCRDInstalled(ctx context.Context, crdName string) (bool, 
 
 	// CRD exists - cache positive result
 	c.cache.set(crdName, true)
-	// Emit present dependency metric (0 = present)
-	c.updateDependencyMetric(crdName, false)
 	return true, nil
 }
 
-// updateDependencyMetric emits metrics for missing/present CRDs
-// Parses CRD name (format: <plural>.<group>) to extract group and kind
-func (c *CRDChecker) updateDependencyMetric(crdName string, missing bool) {
+// ReportDependencyMetric emits kubevirt_autopilot_missing_dependency and
+// kubevirt_autopilot_dependency_opted_in for a CRD.
+// Parses CRD name (format: <plural>.<group>) to extract group and kind.
+// optedIn reflects whether the feature requiring this CRD is enabled.
+func (c *CRDChecker) ReportDependencyMetric(crdName string, missing bool, optedIn bool) {
 	// Parse CRD name: "metallbs.metallb.io" → group="metallb.io", kind="MetalLB"
 	// We need to extract group and infer kind from the plural form
 	parts := strings.SplitN(crdName, ".", 2)
@@ -119,7 +117,7 @@ func (c *CRDChecker) updateDependencyMetric(crdName string, missing bool) {
 	// The actual version doesn't matter for our "is this CRD missing?" metric
 	version := "v1"
 
-	observability.SetMissingDependency(group, version, kind, missing)
+	observability.SetDependency(group, version, kind, missing, optedIn)
 }
 
 // InvalidateCache clears the cache for a specific CRD or all CRDs

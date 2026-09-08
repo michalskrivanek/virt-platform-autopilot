@@ -249,6 +249,36 @@ func (r *Registry) ShouldApply(ctx context.Context, asset *AssetMetadata, evalCo
 	return true, nil
 }
 
+// CRDOptInStates maps every CRD referenced by a declared asset (RequiredCRD or
+// GateCRD) to whether at least one asset depending on it is enabled.
+// Always-install assets count as opted in; opt-in assets require satisfied conditions.
+func (r *Registry) CRDOptInStates(ctx context.Context, eval ConditionEvaluator) (map[string]bool, error) {
+	states := make(map[string]bool)
+
+	for i := range r.catalog.Assets {
+		asset := &r.catalog.Assets[i]
+		if asset.RequiredCRD == "" && asset.GateCRD == "" {
+			continue
+		}
+
+		optedIn := asset.Install == InstallModeAlways
+		if !optedIn {
+			var err error
+			if optedIn, err = r.ShouldApply(ctx, asset, eval); err != nil {
+				return nil, err
+			}
+		}
+
+		for _, crdName := range []string{asset.RequiredCRD, asset.GateCRD} {
+			if crdName != "" {
+				states[crdName] = states[crdName] || optedIn
+			}
+		}
+	}
+
+	return states, nil
+}
+
 // IsManagedCRD reports whether crdName is the required CRD of at least one declared asset.
 // Used by the CRD event handler to decide whether a CRD install/removal is relevant.
 func (r *Registry) IsManagedCRD(crdName string) bool {

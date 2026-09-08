@@ -82,15 +82,32 @@ var (
 		[]string{"kind", "name", "namespace", "type"},
 	)
 
-	// MissingDependency tracks missing optional CRDs (soft dependencies).
-	// 1 if a managed CRD (e.g., KubeDescheduler) is missing, 0 otherwise.
+	// MissingDependency tracks managed CRD availability (soft dependencies).
+	// 1 if the CRD is missing, 0 if present.
 	// Distinguishes "Broken" (asset failed) from "Not Installed" (CRD missing).
+	// Pair with DependencyOptedIn to tell an absent CRD that matters from one
+	// belonging to a feature the user never enabled.
 	MissingDependency = prometheus.NewGaugeVec(
 		prometheus.GaugeOpts{
 			Namespace: namespace,
 			Subsystem: subsystem,
 			Name:      "missing_dependency",
 			Help:      "Indicates missing optional CRDs (1=missing, 0=present)",
+		},
+		[]string{"group", "version", "kind"},
+	)
+
+	// DependencyOptedIn tracks whether the feature requiring a managed CRD is enabled.
+	// 1 if enabled, 0 otherwise. Always-install assets count as enabled.
+	// Emitted for the same GVK set as MissingDependency so the two join cleanly;
+	// opt-in state is a value rather than a label because it changes at runtime,
+	// and a label would orphan the previous series on every toggle.
+	DependencyOptedIn = prometheus.NewGaugeVec(
+		prometheus.GaugeOpts{
+			Namespace: namespace,
+			Subsystem: subsystem,
+			Name:      "dependency_opted_in",
+			Help:      "Indicates whether the feature requiring a managed CRD is enabled (1=enabled, 0=not enabled)",
 		},
 		[]string{"group", "version", "kind"},
 	)
@@ -141,6 +158,7 @@ func init() {
 		PausedResources,
 		CustomizationInfo,
 		MissingDependency,
+		DependencyOptedIn,
 		ReconcileDuration,
 		TombstoneStatus,
 	)
@@ -199,14 +217,23 @@ func ClearCustomization(obj *unstructured.Unstructured, customizationType string
 	)
 }
 
-// SetMissingDependency marks a CRD as missing (1) or present (0).
-// group, version, kind: The GVK of the missing CRD
-func SetMissingDependency(group, version, kind string, missing bool) {
-	value := 0.0
-	if missing {
-		value = 1.0
+// SetDependency reports both facts about a managed CRD for one GVK.
+// group, version, kind: the GVK of the dependency.
+// missing: whether the CRD is absent from the cluster.
+// optedIn: whether the feature requiring it is enabled (opt-in condition satisfied
+// or always-install).
+// Both series are always written together so the alert join cannot see one
+// without the other.
+func SetDependency(group, version, kind string, missing bool, optedIn bool) {
+	MissingDependency.WithLabelValues(group, version, kind).Set(boolToFloat(missing))
+	DependencyOptedIn.WithLabelValues(group, version, kind).Set(boolToFloat(optedIn))
+}
+
+func boolToFloat(b bool) float64 {
+	if b {
+		return 1.0
 	}
-	MissingDependency.WithLabelValues(group, version, kind).Set(value)
+	return 0.0
 }
 
 // ObserveReconcileDuration records the duration of a reconciliation operation.

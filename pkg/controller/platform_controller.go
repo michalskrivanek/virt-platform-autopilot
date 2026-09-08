@@ -199,6 +199,8 @@ func (r *PlatformReconciler) Reconcile(ctx context.Context, req ctrl.Request) (c
 	// Update condition evaluator with current context
 	r.updateConditionEvaluator(hco, renderCtx)
 
+	r.reconcileDependencyMetrics(ctx)
+
 	// Step 3: Reconcile all other assets in reconcile_order
 	logger.Info("Reconciling platform assets")
 	if err := r.reconcileAssets(ctx, renderCtx); err != nil {
@@ -247,6 +249,31 @@ func (r *PlatformReconciler) reconcileHCO(ctx context.Context, currentHCO *unstr
 	}
 
 	return nil
+}
+
+// reconcileDependencyMetrics updates kubevirt_autopilot_missing_dependency and
+// kubevirt_autopilot_dependency_opted_in for all managed CRDs. CRD presence is always
+// reported; the paired opt-in gauge lets alerts ignore features nobody enabled.
+// Metric bookkeeping never blocks reconciliation: failures are logged and skipped,
+// matching how assetCRDsAvailable treats the same errors.
+func (r *PlatformReconciler) reconcileDependencyMetrics(ctx context.Context) {
+	logger := log.FromContext(ctx)
+
+	optInStates, err := r.registry.CRDOptInStates(ctx, r.conditionEvaluator)
+	if err != nil {
+		logger.Error(err, "Failed to evaluate CRD opt-in states, skipping dependency metrics")
+		return
+	}
+
+	for crdName, optedIn := range optInStates {
+		installed, err := r.crdChecker.IsCRDInstalled(ctx, crdName)
+		if err != nil {
+			logger.Error(err, "Failed to check CRD availability, skipping dependency metric", "crd", crdName)
+			continue
+		}
+
+		r.crdChecker.ReportDependencyMetric(crdName, !installed, optedIn)
+	}
 }
 
 // assetCRDsAvailable checks both the auto-detected RequiredCRD and the explicit GateCRD.

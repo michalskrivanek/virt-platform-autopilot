@@ -18,13 +18,17 @@ package util
 
 import (
 	"context"
+	"strings"
 	"testing"
 	"time"
 
+	"github.com/prometheus/client_golang/prometheus/testutil"
 	apiextensionsv1 "k8s.io/apiextensions-apiserver/pkg/apis/apiextensions/v1"
 	"k8s.io/apimachinery/pkg/runtime"
 	"sigs.k8s.io/controller-runtime/pkg/client"
 	"sigs.k8s.io/controller-runtime/pkg/client/fake"
+
+	"github.com/kubevirt/virt-platform-autopilot/pkg/observability"
 )
 
 func TestCRDChecker_IsCRDInstalled(t *testing.T) {
@@ -222,6 +226,58 @@ func TestCRDChecker_ConcurrentAccess(t *testing.T) {
 	}
 
 	// If we got here without a race detector panic, test passed
+}
+
+func TestCRDChecker_IsCRDInstalled_DoesNotEmitMetrics(t *testing.T) {
+	observability.MissingDependency.Reset()
+
+	scheme := runtime.NewScheme()
+	_ = apiextensionsv1.AddToScheme(scheme)
+
+	fakeClient := fake.NewClientBuilder().
+		WithScheme(scheme).
+		Build()
+
+	checker := NewCRDChecker(fakeClient)
+	ctx := context.Background()
+
+	_, err := checker.IsCRDInstalled(ctx, "bars.example.com")
+	if err != nil {
+		t.Fatalf("IsCRDInstalled() failed: %v", err)
+	}
+
+	if err := testutil.CollectAndCompare(observability.MissingDependency, strings.NewReader("")); err != nil {
+		t.Fatalf("IsCRDInstalled() should not emit missing_dependency metrics: %v", err)
+	}
+}
+
+func TestCRDChecker_ReportDependencyMetric(t *testing.T) {
+	observability.MissingDependency.Reset()
+	observability.DependencyOptedIn.Reset()
+
+	checker := NewCRDChecker(fake.NewClientBuilder().Build())
+
+	checker.ReportDependencyMetric("metallbs.metallb.io", true, true)
+
+	// Both series must carry the same GVK labels, otherwise the
+	// VirtPlatformAutopilotDependencyMissing join never matches.
+	expected := `
+		# HELP kubevirt_autopilot_missing_dependency Indicates missing optional CRDs (1=missing, 0=present)
+		# TYPE kubevirt_autopilot_missing_dependency gauge
+		kubevirt_autopilot_missing_dependency{group="metallb.io",kind="Metallb",version="v1"} 1
+	`
+	if err := testutil.CollectAndCompare(observability.MissingDependency, strings.NewReader(expected)); err != nil {
+		t.Fatalf("ReportDependencyMetric() unexpected metrics: %v", err)
+	}
+
+	expected = `
+		# HELP kubevirt_autopilot_dependency_opted_in Indicates whether the feature requiring a managed CRD is enabled (1=enabled, 0=not enabled)
+		# TYPE kubevirt_autopilot_dependency_opted_in gauge
+		kubevirt_autopilot_dependency_opted_in{group="metallb.io",kind="Metallb",version="v1"} 1
+	`
+	if err := testutil.CollectAndCompare(observability.DependencyOptedIn, strings.NewReader(expected)); err != nil {
+		t.Fatalf("ReportDependencyMetric() unexpected opt-in metrics: %v", err)
+	}
 }
 
 // Test that cache methods are thread-safe
