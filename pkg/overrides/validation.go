@@ -47,7 +47,6 @@ var (
 	sensitiveKinds = map[string]bool{
 		// Machine configuration - controls node-level config
 		"MachineConfig": true,
-		"KubeletConfig": true,
 
 		// RBAC resources - control permissions
 		"ClusterRole":        true,
