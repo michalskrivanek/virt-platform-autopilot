@@ -123,6 +123,22 @@ Test with real Kubernetes cluster (Kind).
 4. **Write clear commit messages** describing what and why
 5. **Respond to review feedback** promptly
 
+### Contributor compliance with Developer Certificate of Origin (DCO)
+
+We require every contributor to certify that they are legally permitted to
+contribute to this project. A contributor expresses this by signing their
+commits, thereby stating compliance with the
+[Developer Certificate of Origin](https://developercertificate.org/).
+
+A signed commit includes a line like the following in the commit message:
+
+```
+Signed-off-by: Jane Doe <jane.doe@example.com>
+```
+
+Add `--signoff` to your git commit command, or use `git commit -s`. See
+[Commit Messages](#commit-messages) below for message formatting.
+
 ### Commit Messages
 
 Follow these guidelines:
@@ -154,7 +170,8 @@ Be respectful, inclusive, and collaborative. We welcome contributors of all back
 
 ## License
 
-By contributing, you agree that your contributions will be licensed under the Apache License 2.0.
+By contributing, you agree that your contributions will be licensed under the
+Apache License, Version 2.0. See [LICENSE](LICENSE) and [NOTICE](NOTICE).
 
 ---
 
