@@ -154,7 +154,8 @@ Be respectful, inclusive, and collaborative. We welcome contributors of all back
 
 ## License
 
-By contributing, you agree that your contributions will be licensed under the Apache License 2.0.
+By contributing, you agree that your contributions will be licensed under the
+Apache License, Version 2.0. See [LICENSE](LICENSE) and [NOTICE](NOTICE).
 
 ---
 

@@ -1,0 +1,23 @@
+Virt Platform Autopilot
+Copyright The Virt Platform Autopilot Authors
+
+Licensed under the Apache License, Version 2.0. See LICENSE for the full text.
+
+Modified works
+--------------
+
+hack/prom_metric_linter.sh and tools/prom-metrics-collector/metrics_json_generator.go
+are derived from kubevirt/hyperconverged-cluster-operator. Upstream file headers are
+preserved unchanged; modifications are Copyright The Virt Platform Autopilot Authors.
+
+Synced content
+--------------
+
+Files under test/crds/ are copied from upstream repositories by hack/update-crds.sh.
+See test/crds/README.md for per-file source mapping.
+
+Files under assets/active/kubevirt-metrics-exporter/ are copied from upstream by
+hack/sync-kme-assets.sh. The DaemonSet manifest is transformed for autopilot
+template rendering.
+
+Third-party Go dependencies are vendored under vendor/; see each module's LICENSE.
