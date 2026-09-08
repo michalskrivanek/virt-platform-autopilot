@@ -114,7 +114,7 @@ jobs:
           commit_body=$(echo "$changed_files" | sed 's/^/- /')
 
           git add assets/active/kubevirt-metrics-exporter/
-          printf 'chore: sync kubevirt-metrics-exporter assets from upstream\n\nUpdated files:\n%s\n' "$commit_body" | git commit -F -
+          printf 'chore: sync kubevirt-metrics-exporter assets from upstream\n\nUpdated files:\n%s\n' "$commit_body" | git commit -s -F -
           git push origin "${{ steps.existing_pr.outputs.branch }}"
 
       - name: Create branch and open PR
@@ -136,7 +136,7 @@ jobs:
           commit_body=$(echo "$changed_files" | sed 's/^/- /')
 
           git add assets/active/kubevirt-metrics-exporter/
-          printf 'chore: sync kubevirt-metrics-exporter assets from upstream\n\nUpdated files:\n%s\n' "$commit_body" | git commit -F -
+          printf 'chore: sync kubevirt-metrics-exporter assets from upstream\n\nUpdated files:\n%s\n' "$commit_body" | git commit -s -F -
 
           git push origin "$branch"
 
