@@ -328,6 +328,7 @@ type AssetMetrics struct {
 	PausedResources        float64 // 1=paused, 0=active, -1=not found
 	CustomizationInfo      float64 // 1=customized, -1=not found
 	MissingDependency      float64 // 1=missing, 0=present, -1=not found
+	DependencyOptedIn      float64 // 1=feature enabled, 0=not enabled, -1=not found
 	TombstoneStatus        float64 // 1=exists, 0=deleted, -1=error, -2=skipped, or -1=not found
 }
 
@@ -346,6 +347,7 @@ func captureAssetMetrics(kind, name, namespace string) AssetMetrics {
 		PausedResources:        findMetricValueInBody(body, "kubevirt_autopilot_paused_resources", labels),
 		CustomizationInfo:      findMetricValueInBody(body, "kubevirt_autopilot_customization_info", labels),
 		MissingDependency:      findMetricValueInBody(body, "kubevirt_autopilot_missing_dependency", map[string]string{"kind": kind}),
+		DependencyOptedIn:      findMetricValueInBody(body, "kubevirt_autopilot_dependency_opted_in", map[string]string{"kind": kind}),
 		TombstoneStatus:        findMetricValueInBody(body, "kubevirt_autopilot_tombstone_status", labels),
 	}
 
@@ -902,22 +904,56 @@ func discoverActiveAssets() []discoveredAsset {
 	return assets
 }
 
-func getMissingDependenciesFromMetrics() []missingDependency {
-	var deps []missingDependency
+// classifyMissingDependencies returns two slices: deps with dependency_opted_in==1
+// (alert-triggering) and deps with dependency_opted_in==0 (alert-suppressed).
+// Both slices only include CRDs where missing_dependency==1.
+func classifyMissingDependencies() (optedIn, notOptedIn []missingDependency) {
 	body := fetchMetricsBody()
+
+	optedInKeys := map[string]bool{}
+	for _, line := range strings.Split(body, "\n") {
+		if strings.HasPrefix(line, "#") || line == "" {
+			continue
+		}
+		if strings.HasPrefix(line, "kubevirt_autopilot_dependency_opted_in") && parseMetricValue(line) == 1 {
+			key := parseMetricLabel(line, "group") + "/" + parseMetricLabel(line, "version") + "/" + parseMetricLabel(line, "kind")
+			optedInKeys[key] = true
+		}
+	}
+
 	for _, line := range strings.Split(body, "\n") {
 		if strings.HasPrefix(line, "#") || line == "" {
 			continue
 		}
 		if strings.HasPrefix(line, "kubevirt_autopilot_missing_dependency") && parseMetricValue(line) == 1 {
-			deps = append(deps, missingDependency{
-				Kind:    parseMetricLabel(line, "kind"),
-				Group:   parseMetricLabel(line, "group"),
-				Version: parseMetricLabel(line, "version"),
-			})
+			group := parseMetricLabel(line, "group")
+			version := parseMetricLabel(line, "version")
+			kind := parseMetricLabel(line, "kind")
+			dep := missingDependency{Kind: kind, Group: group, Version: version}
+			if optedInKeys[group+"/"+version+"/"+kind] {
+				optedIn = append(optedIn, dep)
+			} else {
+				notOptedIn = append(notOptedIn, dep)
+			}
 		}
 	}
-	return deps
+	return optedIn, notOptedIn
+}
+
+// getMissingOptedInDependenciesFromMetrics returns only CRDs that are both
+// missing (missing_dependency==1) and opted in (dependency_opted_in==1).
+// These are the only deps for which VirtPlatformAutopilotDependencyMissing fires.
+func getMissingOptedInDependenciesFromMetrics() []missingDependency {
+	opted, _ := classifyMissingDependencies()
+	return opted
+}
+
+// getMissingNonOptedInDependenciesFromMetrics returns CRDs that are missing
+// (missing_dependency==1) but NOT opted in (dependency_opted_in==0).
+// VirtPlatformAutopilotDependencyMissing must NOT fire for these.
+func getMissingNonOptedInDependenciesFromMetrics() []missingDependency {
+	_, notOpted := classifyMissingDependencies()
+	return notOpted
 }
 
 func parseMetricLabel(line, key string) string {
