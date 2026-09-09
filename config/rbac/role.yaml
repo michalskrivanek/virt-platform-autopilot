@@ -209,7 +209,7 @@ rules:
       - patch
       - update
       - watch
-  # MachineConfig & KubeletConfig
+  # MachineConfig & KubeletConfig (includes tombstone cleanup)
   - apiGroups:
       - machineconfiguration.openshift.io
     resources:
@@ -217,6 +217,7 @@ rules:
       - machineconfigs
     verbs:
       - create
+      - delete
       - get
       - list
       - patch

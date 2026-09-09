@@ -251,6 +251,10 @@ test-alerts: ## Test Prometheus alert rules with promtool
 lint-metrics: ## Lint Prometheus metric naming conventions with prom-metrics-linter
 	./hack/prom_metric_linter.sh --operator-name="kubevirt" --sub-operator-name="autopilot"
 
+.PHONY: lint-assets
+lint-assets: ## Check for prohibited KubeletConfig usage in assets
+	@hack/lint-no-kubeletconfig.sh
+
 ##@ Local Development (Kind)
 
 CLUSTER_NAME ?= virt-platform-autopilot

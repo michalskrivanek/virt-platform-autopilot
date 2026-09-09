@@ -265,11 +265,6 @@ func TestIsManagedCRD(t *testing.T) {
 			expected: true,
 		},
 		{
-			name:     "KubeletConfig is managed",
-			crdName:  "kubeletconfigs.machineconfiguration.openshift.io",
-			expected: true,
-		},
-		{
 			name:     "NodeHealthCheck is managed",
 			crdName:  "nodehealthchecks.remediation.medik8s.io",
 			expected: true,

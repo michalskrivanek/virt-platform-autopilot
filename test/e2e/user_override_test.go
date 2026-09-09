@@ -274,7 +274,7 @@ var _ = Describe("User Override E2E Tests: ", Ordered, ContinueOnFailure, func()
 
 		BeforeAll(func() {
 			if len(sensitiveAssets) == 0 {
-				Skip("no sensitive assets available (MachineConfig/KubeletConfig CRDs not installed)")
+				Skip("no sensitive assets available (MachineConfig CRDs not installed)")
 			}
 			testStartTime = time.Now()
 

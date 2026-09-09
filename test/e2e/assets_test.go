@@ -100,7 +100,6 @@ func (a testAsset) webhookName() string {
 // new assets of a sensitive kind are flagged without manual annotation.
 var sensitiveKinds = map[string]bool{
 	"MachineConfig":                  true,
-	"KubeletConfig":                  true,
 	"ClusterRole":                    true,
 	"ClusterRoleBinding":             true,
 	"Role":                           true,
@@ -129,15 +128,6 @@ var assetsUnderTest = initAssets([]testAsset{
 		Plural:        "machineconfigs",
 		Name:          "99-openshift-machineconfig-worker-psi-karg",
 		ClusterScoped: true,
-	},
-	{
-		// No Override: any field change on KubeletConfig triggers an MCP rollout.
-		GVK:            schema.GroupVersionKind{Group: "machineconfiguration.openshift.io", Version: "v1", Kind: "KubeletConfig"},
-		Plural:         "kubeletconfigs",
-		Name:           "virt-perf-settings",
-		GateCRD:        "kubeletconfigs.machineconfiguration.openshift.io",
-		GateAnnotation: "platform.kubevirt.io/enable-kubelet-performance-settings",
-		ClusterScoped:  true,
 	},
 	{
 		GVK:           schema.GroupVersionKind{Group: "", Version: "v1", Kind: "Service"},

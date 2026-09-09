@@ -186,12 +186,12 @@ assets:
       - type: topology
         field: hasSchedulableMasters
 
-  # Phase 1: OpenShift Kubelet (soft dependency on KubeletConfig CRD)
+  # Phase 1: OpenShift Kubelet (MachineConfig dropping files to /etc/openshift/kubelet.conf.d)
   - name: kubelet-perf-settings
-    path: active/kubelet/perf-settings.yaml.tpl
+    path: active/machine-config/03-kubelet-perf-settings.yaml.tpl
     phase: 1
     install: opt-in
-    component: KubeletConfig
+    component: MachineConfig
     reconcile_order: 1
     conditions:
       - type: annotation
@@ -391,10 +391,10 @@ assets:
   # explicit opt-in annotation: these kubelet perf tunings change node-level
   # reserved resources and require deliberate opt-in (see CNV-96059).
   - name: kubelet-cpu-manager
-    path: active/kubelet/cpu-manager.yaml.tpl
+    path: active/machine-config/07-kubelet-cpu-manager.yaml.tpl
     phase: 1
     install: opt-in
-    component: KubeletConfig
+    component: MachineConfig
     reconcile_order: 1
     conditions:
       - type: kubevirt-feature-gate

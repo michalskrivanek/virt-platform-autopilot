@@ -62,6 +62,9 @@ jobs:
       - name: Run shellcheck
         run: make shellcheck
 
+      - name: Check for prohibited KubeletConfig usage
+        run: make lint-assets
+
       - name: Install flake8 and isort
         run: pip install flake8 isort
 

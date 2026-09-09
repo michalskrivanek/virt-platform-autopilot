@@ -336,8 +336,6 @@ func pluralizeKind(kind string) string {
 	switch k {
 	case "nodehealthcheck":
 		return "nodehealthchecks"
-	case "kubeletconfig":
-		return "kubeletconfigs"
 	case "machineconfig":
 		return "machineconfigs"
 	case "kubedescheduler":
