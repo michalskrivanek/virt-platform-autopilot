@@ -25,6 +25,7 @@ import (
 	"strings"
 
 	"k8s.io/apimachinery/pkg/apis/meta/v1/unstructured"
+	"sigs.k8s.io/controller-runtime/pkg/log"
 	"sigs.k8s.io/yaml"
 )
 
@@ -254,6 +255,7 @@ func (r *Registry) ShouldApply(ctx context.Context, asset *AssetMetadata, evalCo
 // Always-install assets count as opted in; opt-in assets require satisfied conditions.
 func (r *Registry) CRDOptInStates(ctx context.Context, eval ConditionEvaluator) (map[string]bool, error) {
 	states := make(map[string]bool)
+	logger := log.FromContext(ctx)
 
 	for i := range r.catalog.Assets {
 		asset := &r.catalog.Assets[i]
@@ -265,7 +267,8 @@ func (r *Registry) CRDOptInStates(ctx context.Context, eval ConditionEvaluator) 
 		if !optedIn {
 			var err error
 			if optedIn, err = r.ShouldApply(ctx, asset, eval); err != nil {
-				return nil, err
+				logger.Error(err, "Failed to evaluate asset conditions, skipping dependency metrics for asset", "asset", asset.Name)
+				continue
 			}
 		}
 

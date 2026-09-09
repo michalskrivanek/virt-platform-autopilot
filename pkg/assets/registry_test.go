@@ -418,6 +418,33 @@ func TestCRDOptInStates(t *testing.T) {
 			t.Fatal("CRDOptInStates() = false, want true with opt-in annotation")
 		}
 	})
+
+	t.Run("continues when an asset condition evaluation fails", func(t *testing.T) {
+		registry := &Registry{catalog: &AssetCatalog{Assets: []AssetMetadata{
+			{
+				Name:        "invalid-condition",
+				Install:     InstallModeOptIn,
+				RequiredCRD: "invalid.example.com",
+				Conditions:  []AssetCondition{{Type: ConditionType("invalid")}},
+			},
+			{
+				Name:        "always-enabled",
+				Install:     InstallModeAlways,
+				RequiredCRD: "enabled.example.com",
+			},
+		}}}
+
+		states, err := registry.CRDOptInStates(ctx, &DefaultConditionEvaluator{})
+		if err != nil {
+			t.Fatalf("CRDOptInStates() error = %v, want nil", err)
+		}
+		if _, found := states["invalid.example.com"]; found {
+			t.Fatal("CRDOptInStates() included the CRD for an asset whose conditions could not be evaluated")
+		}
+		if !states["enabled.example.com"] {
+			t.Fatal("CRDOptInStates() did not retain the state for a later valid asset")
+		}
+	})
 }
 
 func TestDefaultConditionEvaluator_EvaluateCondition(t *testing.T) {

@@ -18,6 +18,7 @@ package controller
 
 import (
 	"context"
+	stderrors "errors"
 	"fmt"
 	"os"
 	"sync"
@@ -199,13 +200,17 @@ func (r *PlatformReconciler) Reconcile(ctx context.Context, req ctrl.Request) (c
 	// Update condition evaluator with current context
 	r.updateConditionEvaluator(hco, renderCtx)
 
-	r.reconcileDependencyMetrics(ctx)
+	metricErr := r.reconcileDependencyMetrics(ctx)
 
 	// Step 3: Reconcile all other assets in reconcile_order
 	logger.Info("Reconciling platform assets")
 	if err := r.reconcileAssets(ctx, renderCtx); err != nil {
 		logger.Error(err, "Failed to reconcile assets")
 		return ctrl.Result{}, err
+	}
+	if metricErr != nil {
+		logger.Error(metricErr, "Dependency metric refresh incomplete, retrying reconciliation")
+		return ctrl.Result{}, metricErr
 	}
 
 	logger.Info("Successfully reconciled virt platform")
@@ -254,26 +259,29 @@ func (r *PlatformReconciler) reconcileHCO(ctx context.Context, currentHCO *unstr
 // reconcileDependencyMetrics updates kubevirt_autopilot_missing_dependency and
 // kubevirt_autopilot_dependency_opted_in for all managed CRDs. CRD presence is always
 // reported; the paired opt-in gauge lets alerts ignore features nobody enabled.
-// Metric bookkeeping never blocks reconciliation: failures are logged and skipped,
-// matching how assetCRDsAvailable treats the same errors.
-func (r *PlatformReconciler) reconcileDependencyMetrics(ctx context.Context) {
+// Metric collection failures are logged, but returned after all assets have been
+// reconciled so controller-runtime can retry the full reconciliation with backoff.
+func (r *PlatformReconciler) reconcileDependencyMetrics(ctx context.Context) error {
 	logger := log.FromContext(ctx)
 
 	optInStates, err := r.registry.CRDOptInStates(ctx, r.conditionEvaluator)
 	if err != nil {
-		logger.Error(err, "Failed to evaluate CRD opt-in states, skipping dependency metrics")
-		return
+		return fmt.Errorf("evaluate CRD opt-in states: %w", err)
 	}
 
+	var metricErrs []error
 	for crdName, optedIn := range optInStates {
 		installed, err := r.crdChecker.IsCRDInstalled(ctx, crdName)
 		if err != nil {
 			logger.Error(err, "Failed to check CRD availability, skipping dependency metric", "crd", crdName)
+			metricErrs = append(metricErrs, fmt.Errorf("check CRD %q availability: %w", crdName, err))
 			continue
 		}
 
 		r.crdChecker.ReportDependencyMetric(crdName, !installed, optedIn)
 	}
+
+	return stderrors.Join(metricErrs...)
 }
 
 // assetCRDsAvailable checks both the auto-detected RequiredCRD and the explicit GateCRD.
