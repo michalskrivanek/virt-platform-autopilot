@@ -121,12 +121,12 @@ var _ = Describe("Prometheus Alert Tests", Ordered, ContinueOnFailure, func() {
 
 	Context("VirtPlatformAutopilotDependencyMissing", func() {
 		It("should fire warning alert when an optional CRD is absent", func() {
-			By("checking if any missing_dependency metric is already 1")
-			missingDeps := getMissingDependenciesFromMetrics()
+			By("checking if any missing_dependency metric is already 1 with feature opted in")
+			missingDeps := getMissingOptedInDependenciesFromMetrics()
 			if len(missingDeps) == 0 {
-				Skip("No missing dependencies found — all optional CRDs are installed on this cluster")
+				Skip("No opted-in missing dependencies found — alert correctly suppressed for all absent CRDs")
 			}
-			GinkgoWriter.Printf("missing dependencies: %v\n", missingDeps)
+			GinkgoWriter.Printf("opted-in missing dependencies: %v\n", missingDeps)
 
 			for _, dep := range missingDeps {
 				By(fmt.Sprintf("waiting for VirtPlatformAutopilotDependencyMissing alert for %s.%s", dep.Kind, dep.Group))
@@ -145,5 +145,30 @@ var _ = Describe("Prometheus Alert Tests", Ordered, ContinueOnFailure, func() {
 				Expect(alertLabels).To(HaveKeyWithValue("operator", "virt-platform-autopilot"))
 			}
 		})
+
+		It("should NOT fire alert when an optional CRD is absent but feature is not opted in", func() {
+			By("checking if any missing_dependency metric is 1 with feature NOT opted in")
+			suppressedDeps := getMissingNonOptedInDependenciesFromMetrics()
+			if len(suppressedDeps) == 0 {
+				Skip("No non-opted-in missing dependencies found — all absent CRDs have their feature enabled on this cluster")
+			}
+			GinkgoWriter.Printf("non-opted-in missing dependencies (alert must be suppressed): %v\n", suppressedDeps)
+
+			By(fmt.Sprintf("verifying VirtPlatformAutopilotDependencyMissing does not fire for any of %d non-opted-in CRDs", len(suppressedDeps)))
+			attempt := 0
+			Consistently(func() bool {
+				attempt++
+				for _, dep := range suppressedDeps {
+					if queryFiringAlert("VirtPlatformAutopilotDependencyMissing", attempt, 3,
+						"kind", dep.Kind, "group", dep.Group) != nil {
+						GinkgoWriter.Printf("alert fired unexpectedly for non-opted-in %s.%s\n", dep.Kind, dep.Group)
+						return false
+					}
+				}
+				return true
+			}, 35*time.Second, 10*time.Second).Should(BeTrue(),
+				"VirtPlatformAutopilotDependencyMissing must NOT fire for any non-opted-in CRD")
+		})
 	})
+
 })
