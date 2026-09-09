@@ -67,6 +67,11 @@ var metricFamilies = []*dto.MetricFamily{
 		Type: typePtr(dto.MetricType_GAUGE),
 	},
 	{
+		Name: strPtr("kubevirt_autopilot_dependency_opted_in"),
+		Help: strPtr("Indicates whether the feature requiring a managed CRD is enabled (1=enabled, 0=not enabled)"),
+		Type: typePtr(dto.MetricType_GAUGE),
+	},
+	{
 		Name: strPtr("kubevirt_autopilot_reconcile_duration_seconds"),
 		Help: strPtr("Duration of asset reconciliation operations (rendering + SSA apply)"),
 		Type: typePtr(dto.MetricType_HISTOGRAM),

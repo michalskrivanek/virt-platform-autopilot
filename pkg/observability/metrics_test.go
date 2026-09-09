@@ -17,6 +17,7 @@ limitations under the License.
 package observability
 
 import (
+	"fmt"
 	"strings"
 	"testing"
 	"time"
@@ -223,16 +224,26 @@ func TestMultipleCustomizationTypes(t *testing.T) {
 	}
 }
 
-func TestSetMissingDependency(t *testing.T) {
-	// Reset metrics before test
-	MissingDependency.Reset()
-
-	// Mark MetalLB CRD as missing
-	SetMissingDependency("metallb.io", "v1beta1", "MetalLB", true)
-
-	expected := `
+const (
+	missingDependencyHeader = `
 		# HELP kubevirt_autopilot_missing_dependency Indicates missing optional CRDs (1=missing, 0=present)
 		# TYPE kubevirt_autopilot_missing_dependency gauge
+	`
+	dependencyOptedInHeader = `
+		# HELP kubevirt_autopilot_dependency_opted_in Indicates whether the feature requiring a managed CRD is enabled (1=enabled, 0=not enabled)
+		# TYPE kubevirt_autopilot_dependency_opted_in gauge
+	`
+)
+
+func TestSetDependency(t *testing.T) {
+	// Reset metrics before test
+	MissingDependency.Reset()
+	DependencyOptedIn.Reset()
+
+	// Mark MetalLB CRD as missing
+	SetDependency("metallb.io", "v1beta1", "MetalLB", true, true)
+
+	expected := missingDependencyHeader + `
 		kubevirt_autopilot_missing_dependency{group="metallb.io",kind="MetalLB",version="v1beta1"} 1
 	`
 
@@ -241,17 +252,56 @@ func TestSetMissingDependency(t *testing.T) {
 	}
 
 	// Mark as present
-	SetMissingDependency("metallb.io", "v1beta1", "MetalLB", false)
+	SetDependency("metallb.io", "v1beta1", "MetalLB", false, true)
 
-	expected = `
-		# HELP kubevirt_autopilot_missing_dependency Indicates missing optional CRDs (1=missing, 0=present)
-		# TYPE kubevirt_autopilot_missing_dependency gauge
+	expected = missingDependencyHeader + `
 		kubevirt_autopilot_missing_dependency{group="metallb.io",kind="MetalLB",version="v1beta1"} 0
 	`
 
 	if err := testutil.CollectAndCompare(MissingDependency, strings.NewReader(expected)); err != nil {
 		t.Errorf("unexpected metric value after marking present: %v", err)
 	}
+}
+
+// TestSetDependency_OptInToggle checks that toggling opt-in only moves a value:
+// the alert joins the two metrics on GVK, so a stale extra series on either side
+// would keep VirtPlatformAutopilotDependencyMissing firing after the user
+// disabled the feature.
+func TestSetDependency_OptInToggle(t *testing.T) {
+	MissingDependency.Reset()
+	DependencyOptedIn.Reset()
+
+	assertSeries := func(step string, missing, optedIn int) {
+		t.Helper()
+
+		expected := missingDependencyHeader + fmt.Sprintf(
+			"kubevirt_autopilot_missing_dependency{group=\"metallb.io\",kind=\"MetalLB\",version=\"v1beta1\"} %d\n",
+			missing,
+		)
+		if err := testutil.CollectAndCompare(MissingDependency, strings.NewReader(expected)); err != nil {
+			t.Errorf("%s: unexpected missing_dependency series: %v", step, err)
+		}
+
+		expected = dependencyOptedInHeader + fmt.Sprintf(
+			"kubevirt_autopilot_dependency_opted_in{group=\"metallb.io\",kind=\"MetalLB\",version=\"v1beta1\"} %d\n",
+			optedIn,
+		)
+		if err := testutil.CollectAndCompare(DependencyOptedIn, strings.NewReader(expected)); err != nil {
+			t.Errorf("%s: unexpected dependency_opted_in series: %v", step, err)
+		}
+	}
+
+	// Feature enabled while the CRD is missing: the alert should fire.
+	SetDependency("metallb.io", "v1beta1", "MetalLB", true, true)
+	assertSeries("opted in", 1, 1)
+
+	// User opts out: opt-in flips to 0, no second series appears.
+	SetDependency("metallb.io", "v1beta1", "MetalLB", true, false)
+	assertSeries("opted out", 1, 0)
+
+	// And back again.
+	SetDependency("metallb.io", "v1beta1", "MetalLB", true, true)
+	assertSeries("opted back in", 1, 1)
 }
 
 func TestObserveReconcileDuration(t *testing.T) {

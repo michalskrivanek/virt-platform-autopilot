@@ -120,6 +120,7 @@ var _ = Describe("Prometheus Alert Rules", Ordered, func() {
 		dependencyAlert := warningRules[1].(map[string]any)
 		Expect(dependencyAlert["alert"]).To(Equal("VirtPlatformAutopilotDependencyMissing"))
 		Expect(dependencyAlert["expr"]).To(ContainSubstring("kubevirt_autopilot_missing_dependency == 1"))
+		Expect(dependencyAlert["expr"]).To(ContainSubstring("kubevirt_autopilot_dependency_opted_in == 1"))
 		Expect(dependencyAlert["for"]).To(Equal("5m"))
 
 		// Verify tombstone alert

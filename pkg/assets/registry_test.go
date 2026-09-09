@@ -353,6 +353,100 @@ func TestShouldApply(t *testing.T) {
 	})
 }
 
+func TestCRDOptInStates(t *testing.T) {
+	ctx := context.Background()
+	loader := NewLoader()
+	registry, err := NewRegistry(loader)
+	if err != nil {
+		t.Fatalf("NewRegistry() failed: %v", err)
+	}
+
+	t.Run("covers every referenced CRD exactly once", func(t *testing.T) {
+		states, err := registry.CRDOptInStates(ctx, &DefaultConditionEvaluator{})
+		if err != nil {
+			t.Fatalf("CRDOptInStates() error = %v", err)
+		}
+		if len(states) == 0 {
+			t.Fatal("CRDOptInStates() returned no CRDs")
+		}
+		if _, ok := states[""]; ok {
+			t.Fatal("CRDOptInStates() returned an empty CRD name")
+		}
+
+		for _, crdName := range []string{
+			"metallbs.metallb.io",
+			"machineconfigs.machineconfiguration.openshift.io",
+		} {
+			if _, ok := states[crdName]; !ok {
+				t.Fatalf("CRDOptInStates() missing %s", crdName)
+			}
+		}
+	})
+
+	t.Run("always-install CRD is opted in without annotation", func(t *testing.T) {
+		states, err := registry.CRDOptInStates(ctx, &DefaultConditionEvaluator{})
+		if err != nil {
+			t.Fatalf("CRDOptInStates() error = %v", err)
+		}
+		if !states["machineconfigs.machineconfiguration.openshift.io"] {
+			t.Fatal("CRDOptInStates() = false, want true for always-install asset")
+		}
+	})
+
+	t.Run("opt-in CRD is not opted in without annotation", func(t *testing.T) {
+		states, err := registry.CRDOptInStates(ctx, &DefaultConditionEvaluator{})
+		if err != nil {
+			t.Fatalf("CRDOptInStates() error = %v", err)
+		}
+		if states["metallbs.metallb.io"] {
+			t.Fatal("CRDOptInStates() = true, want false without opt-in annotation")
+		}
+	})
+
+	t.Run("opt-in CRD is opted in when annotation is set", func(t *testing.T) {
+		evaluator := &DefaultConditionEvaluator{
+			Annotations: map[string]string{
+				"platform.kubevirt.io/enable-metallb": "true",
+			},
+		}
+
+		states, err := registry.CRDOptInStates(ctx, evaluator)
+		if err != nil {
+			t.Fatalf("CRDOptInStates() error = %v", err)
+		}
+		if !states["metallbs.metallb.io"] {
+			t.Fatal("CRDOptInStates() = false, want true with opt-in annotation")
+		}
+	})
+
+	t.Run("continues when an asset condition evaluation fails", func(t *testing.T) {
+		registry := &Registry{catalog: &AssetCatalog{Assets: []AssetMetadata{
+			{
+				Name:        "invalid-condition",
+				Install:     InstallModeOptIn,
+				RequiredCRD: "invalid.example.com",
+				Conditions:  []AssetCondition{{Type: ConditionType("invalid")}},
+			},
+			{
+				Name:        "always-enabled",
+				Install:     InstallModeAlways,
+				RequiredCRD: "enabled.example.com",
+			},
+		}}}
+
+		states, err := registry.CRDOptInStates(ctx, &DefaultConditionEvaluator{})
+		if err != nil {
+			t.Fatalf("CRDOptInStates() error = %v, want nil", err)
+		}
+		if _, found := states["invalid.example.com"]; found {
+			t.Fatal("CRDOptInStates() included the CRD for an asset whose conditions could not be evaluated")
+		}
+		if !states["enabled.example.com"] {
+			t.Fatal("CRDOptInStates() did not retain the state for a later valid asset")
+		}
+	})
+}
+
 func TestDefaultConditionEvaluator_EvaluateCondition(t *testing.T) {
 	ctx := context.Background()
 

@@ -74,12 +74,16 @@ spec:
             runbook_url: "{{ printf (.RunbookURLTemplate | default "https://kubevirt.io/monitoring/runbooks/%s") "VirtPlatformAutopilotThrashingDetected" }}"
 
         - alert: VirtPlatformAutopilotDependencyMissing
-          # Soft dependency indicator: Optional CRD is missing
-          # Expr: kubevirt_autopilot_missing_dependency == 1
+          # Soft dependency indicator: Optional CRD is missing for an enabled feature
+          # Both metrics are emitted together for the same GVK set, so the join
+          # cannot see one without the other. Opt-in state is a value rather than
+          # a label because it toggles at runtime.
           # Related platform features will not be configured until CRD is installed
           # This is a warning, not critical - cluster is functional but feature-incomplete
           expr: |
             kubevirt_autopilot_missing_dependency == 1
+              and on(group, version, kind)
+                kubevirt_autopilot_dependency_opted_in == 1
           for: 5m
           labels:
             severity: warning

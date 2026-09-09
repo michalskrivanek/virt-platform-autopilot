@@ -451,8 +451,11 @@ spec:
         kind: Panel
         spec:
           display:
-            description: Optional CRDs that autopilot expects but are not installed.
-              Missing CRDs cause their associated assets to be silently skipped.
+            description: Optional CRDs that autopilot depends on, and whether the
+              feature requiring each one is enabled. Only "Missing, feature enabled"
+              is actionable - the associated assets are silently skipped, and it
+              raises VirtPlatformAutopilotDependencyMissing. A CRD that is missing
+              for a feature nobody enabled is expected and harmless.
             name: Current CRD Dependencies
           plugin:
             kind: Table
@@ -469,18 +472,34 @@ spec:
               - enableSorting: true
                 header: Version
                 name: version
+              # Status encodes both facts from the query below:
+              #   missing_dependency + 2 * dependency_opted_in
+              # 0=present/disabled, 1=missing/disabled, 2=present/enabled,
+              # 3=missing/enabled (the only actionable state).
               - cellSettings:
                 - condition:
                     kind: Value
                     spec:
                       value: "0"
-                  text: Present
-                  textColor: '#73BF69'
+                  text: Present, feature not enabled
+                  textColor: '#8E8E8E'
                 - condition:
                     kind: Value
                     spec:
                       value: "1"
-                  text: Missing
+                  text: Missing, feature not enabled
+                  textColor: '#8E8E8E'
+                - condition:
+                    kind: Value
+                    spec:
+                      value: "2"
+                  text: Present, feature enabled
+                  textColor: '#73BF69'
+                - condition:
+                    kind: Value
+                    spec:
+                      value: "3"
+                  text: Missing, feature enabled
                   textColor: '#F2495C'
                 enableSorting: true
                 header: Status
@@ -517,6 +536,8 @@ spec:
                 kind: PrometheusTimeSeriesQuery
                 spec:
                   query: kubevirt_autopilot_missing_dependency
+                    + on(group, version, kind)
+                      2 * kubevirt_autopilot_dependency_opted_in
       "4_0":
         kind: Panel
         spec:

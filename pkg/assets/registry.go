@@ -25,6 +25,7 @@ import (
 	"strings"
 
 	"k8s.io/apimachinery/pkg/apis/meta/v1/unstructured"
+	"sigs.k8s.io/controller-runtime/pkg/log"
 	"sigs.k8s.io/yaml"
 )
 
@@ -247,6 +248,38 @@ func (r *Registry) ShouldApply(ctx context.Context, asset *AssetMetadata, evalCo
 	}
 
 	return true, nil
+}
+
+// CRDOptInStates maps every CRD referenced by a declared asset (RequiredCRD or
+// GateCRD) to whether at least one asset depending on it is enabled.
+// Always-install assets count as opted in; opt-in assets require satisfied conditions.
+func (r *Registry) CRDOptInStates(ctx context.Context, eval ConditionEvaluator) (map[string]bool, error) {
+	states := make(map[string]bool)
+	logger := log.FromContext(ctx)
+
+	for i := range r.catalog.Assets {
+		asset := &r.catalog.Assets[i]
+		if asset.RequiredCRD == "" && asset.GateCRD == "" {
+			continue
+		}
+
+		optedIn := asset.Install == InstallModeAlways
+		if !optedIn {
+			var err error
+			if optedIn, err = r.ShouldApply(ctx, asset, eval); err != nil {
+				logger.Error(err, "Failed to evaluate asset conditions, skipping dependency metrics for asset", "asset", asset.Name)
+				continue
+			}
+		}
+
+		for _, crdName := range []string{asset.RequiredCRD, asset.GateCRD} {
+			if crdName != "" {
+				states[crdName] = states[crdName] || optedIn
+			}
+		}
+	}
+
+	return states, nil
 }
 
 // IsManagedCRD reports whether crdName is the required CRD of at least one declared asset.

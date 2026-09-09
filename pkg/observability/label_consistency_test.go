@@ -59,6 +59,12 @@ func TestMetricLabelConsistency(t *testing.T) {
 			setupFunc:      setupMissingDependencyMetric,
 		},
 		{
+			name:           "DependencyOptedIn has correct labels",
+			metric:         DependencyOptedIn,
+			expectedLabels: []string{"group", "kind", "version"},
+			setupFunc:      setupMissingDependencyMetric,
+		},
+		{
 			name:           "ReconcileDuration has correct labels",
 			metric:         ReconcileDuration,
 			expectedLabels: []string{"kind", "name", "namespace"},
@@ -166,7 +172,7 @@ func setupCustomizationMetric() {
 }
 
 func setupMissingDependencyMetric() {
-	SetMissingDependency("test.io", "v1", "TestKind", true)
+	SetDependency("test.io", "v1", "TestKind", true, true)
 }
 
 func setupReconcileDurationMetric() {
