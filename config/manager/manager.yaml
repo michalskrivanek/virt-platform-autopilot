@@ -43,6 +43,7 @@ spec:
             capabilities:
               drop:
                 - ALL
+            readOnlyRootFilesystem: true
             runAsNonRoot: true
             seccompProfile:
               type: RuntimeDefault
@@ -66,6 +67,8 @@ spec:
             - name: metrics-serving-cert
               mountPath: /etc/tls/private
               readOnly: true
+            - name: tmp
+              mountPath: /tmp
       serviceAccountName: virt-platform-autopilot
       terminationGracePeriodSeconds: 30
       volumes:
@@ -75,3 +78,6 @@ spec:
           secret:
             secretName: virt-platform-autopilot-metrics-tls
             optional: true
+        - name: tmp
+          emptyDir:
+            sizeLimit: 64Mi
