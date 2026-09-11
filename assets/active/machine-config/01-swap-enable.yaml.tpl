@@ -31,32 +31,40 @@ spec:
       units:
       - contents: |
           [Unit]
-          Description=Enable swap
+          Description=OCP swap - disk
           ConditionFirstBoot=no
           ConditionPathExists=/dev/disk/by-partlabel/OCPSWAP
+          After=local-fs.target
+          Before=swap.target kubelet.service
 
-          [Service]
-          Type=oneshot
-          ExecStart=/bin/sh -c "sudo swapon --priority 100 /dev/disk/by-partlabel/OCPSWAP"
+          [Swap]
+          What=/dev/disk/by-partlabel/OCPSWAP
+          Priority=100
 
           [Install]
+          WantedBy=swap.target
           RequiredBy=kubelet-dependencies.target
         enabled: true
-        name: swap-disk-enable.service
+        name: dev-disk-by\x2dpartlabel-OCPSWAP.swap
       - contents: |
           [Unit]
-          Description=Enable OCP file swap
+          Description=OCP swap - file
           ConditionFirstBoot=no
           ConditionPathExists=/var/tmp/ocpswap.file
+          ConditionFileNotEmpty=/var/tmp/ocpswap.file
+          After=local-fs.target
+          RequiresMountsFor=/var/tmp
+          Before=swap.target kubelet.service
 
-          [Service]
-          Type=oneshot
-          ExecStart=/bin/sh -c "sudo swapon --priority 10 /var/tmp/ocpswap.file"
+          [Swap]
+          What=/var/tmp/ocpswap.file
+          Priority=10
 
           [Install]
+          WantedBy=swap.target
           RequiredBy=kubelet-dependencies.target
         enabled: true
-        name: ocpswap-file-enable.service
+        name: var-tmp-ocpswap.file.swap
       - contents: |
           [Unit]
           Description=KubeVirt adaptive watermark tuning for swap optimization
