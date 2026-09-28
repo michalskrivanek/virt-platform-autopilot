@@ -605,6 +605,14 @@ var _ = Describe("User Override E2E Tests: ", Ordered, ContinueOnFailure, func()
 				}
 			}
 
+			By("setting coalescing bypass on MachineConfig assets so drift corrections apply immediately after unmanaged mode is lifted")
+			for _, asset := range assetsUnderTestAvailable {
+				if asset.GVK.Kind == "MachineConfig" {
+					setAnnotation(asset.GVK, asset.Name, asset.Namespace,
+						"platform.kubevirt.io/bypass-mcp-rollout-coalescing", "true")
+				}
+			}
+
 			By("touching HCO to trigger reconciliation")
 			touchHCO()
 			waitForOperatorHealthy()
@@ -731,6 +739,10 @@ var _ = Describe("User Override E2E Tests: ", Ordered, ContinueOnFailure, func()
 				}
 				if ann := obj.GetAnnotations(); ann != nil && ann[modeAnnotation] == modeUnmanaged {
 					removeAnnotation(asset.GVK, asset.Name, asset.Namespace, modeAnnotation)
+				}
+				if asset.GVK.Kind == "MachineConfig" {
+					removeAnnotation(asset.GVK, asset.Name, asset.Namespace,
+						"platform.kubevirt.io/bypass-mcp-rollout-coalescing")
 				}
 			}
 			touchHCO()
