@@ -1307,23 +1307,14 @@ func createTestMCP(name string) {
 	ExpectWithOffset(1, k8sClient.Create(ctx, pool)).To(Succeed(),
 		fmt.Sprintf("should create test MachineConfigPool %s", name))
 	setMCPUpdating(name, false)
-	// Poll until the pool appears in the API server list. The round-trip latency of
-	// each List call gives the controller's informer goroutine time to process the
-	// watch event emitted on creation, making it safe to tamper MachineConfigs
-	// immediately after createTestMCP returns.
-	ExpectWithOffset(1, func() bool {
-		list := &unstructured.UnstructuredList{}
-		list.SetGroupVersionKind(mcpGVK.GroupVersion().WithKind("MachineConfigPoolList"))
-		if err := k8sClient.List(ctx, list); err != nil {
-			return false
-		}
-		for _, pool := range list.Items {
-			if pool.GetName() == name {
-				return true
-			}
-		}
-		return false
-	}()).To(BeTrue(), fmt.Sprintf("MachineConfigPool %s should be visible after creation", name))
+	// Wait for the manager's MCP informer to propagate the creation watch event
+	// into the controller cache before returning. k8sClient.List reads from the
+	// API server directly and cannot substitute for this: by the time Create
+	// returns the MCP is already in etcd, so a List always succeeds immediately
+	// without giving the informer goroutine time to run. On Kind (localhost) the
+	// watch event arrives in <10ms; 500ms provides a safe margin against goroutine
+	// scheduling delays on loaded CI runners.
+	time.Sleep(500 * time.Millisecond)
 }
 
 // setMCPUpdating patches the status conditions of a MachineConfigPool so that
