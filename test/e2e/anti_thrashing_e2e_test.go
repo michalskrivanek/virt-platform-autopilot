@@ -85,6 +85,12 @@ var _ = Describe("Anti-Thrashing E2E Tests", Ordered, ContinueOnFailure, func() 
 				}, timeout, interval).Should(Succeed(),
 					fmt.Sprintf("%s/%s should exist", asset.GVK.Kind, asset.Name))
 
+				if asset.GVK.Kind == "MachineConfig" {
+					By("setting coalescing bypass so drift corrections apply immediately during edit-war test")
+					setAnnotation(asset.GVK, asset.Name, asset.Namespace,
+						"platform.kubevirt.io/bypass-mcp-rollout-coalescing", "true")
+				}
+
 				testStartTime = time.Now()
 				baselineMetrics = captureAssetMetrics(asset.GVK.Kind, asset.Name, asset.Namespace)
 				GinkgoWriter.Printf("baseline metrics for %s/%s: thrashing_total=%d, paused_resources=%.0f\n",
@@ -104,6 +110,12 @@ var _ = Describe("Anti-Thrashing E2E Tests", Ordered, ContinueOnFailure, func() 
 				restorePatch := []byte(fmt.Sprintf(`{"metadata":{"labels":{"%s":"%s"}}}`, managedByLabel, managedByValue))
 				if obj != nil {
 					_ = k8sClient.Patch(ctx, obj, client.RawPatch(types.MergePatchType, restorePatch))
+				}
+
+				if asset.GVK.Kind == "MachineConfig" {
+					By("removing coalescing bypass annotation after anti-thrashing test")
+					removeAnnotation(asset.GVK, asset.Name, asset.Namespace,
+						"platform.kubevirt.io/bypass-mcp-rollout-coalescing")
 				}
 
 				By("touching HCO to trigger reconciliation after cleanup")

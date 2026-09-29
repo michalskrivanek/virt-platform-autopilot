@@ -260,6 +260,9 @@ var _ = Describe("Controller E2E Tests", func() {
 			ensureCRDInstalled("prometheusrules.monitoring.coreos.com")
 			ensureCRDInstalled("machineconfigs.machineconfiguration.openshift.io")
 			patchAutopilotAndWait(autopilotEnabled)
+			By("setting coalescing bypass on MachineConfig so drift corrections are not staged")
+			setAnnotation(machineConfigGVK, swapMcName, "",
+				"platform.kubevirt.io/bypass-mcp-rollout-coalescing", "true")
 		})
 
 		It("should clear compliance_status but preserve customization annotations when a previously-unmanaged asset is excluded via disabled-resources", func() {
@@ -418,6 +421,10 @@ var _ = Describe("Controller E2E Tests", func() {
 		AfterAll(func() {
 			By("removing disabled-resources annotation")
 			removeAnnotation(hcoGVK, hcoName, operatorNamespace, disabledResourcesAnnotation)
+
+			By("removing coalescing bypass annotation from MachineConfig")
+			removeAnnotation(machineConfigGVK, swapMcName, "",
+				"platform.kubevirt.io/bypass-mcp-rollout-coalescing")
 
 			By("restoring autopilot annotation to recreate managed assets")
 			patchAutopilotAndWait(autopilotEnabled)
