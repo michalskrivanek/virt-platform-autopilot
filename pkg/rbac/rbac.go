@@ -161,6 +161,25 @@ func StaticRules() []Rule {
 			ResourceNames: []string{"virt-platform-autopilot-mc-staging"},
 			Verbs:         []string{"get", "patch", "update"},
 		},
+		// Rule 13: Loki block storage selection uses cluster StorageClasses.
+		{
+			APIGroups: []string{"storage.k8s.io"},
+			Resources: []string{"storageclasses"},
+			Verbs:     []string{"get", "list", "watch"},
+		},
+		// Rule 14: bind only the external collector ClusterRoles referenced by
+		// assets/active/logging/collector-crb-*.yaml.
+		{
+			APIGroups: []string{"rbac.authorization.k8s.io"},
+			Resources: []string{"clusterroles"},
+			ResourceNames: []string{
+				"collect-application-logs",
+				"collect-audit-logs",
+				"collect-infrastructure-logs",
+				"logging-collector-logs-writer",
+			},
+			Verbs: []string{"bind"},
+		},
 	}
 }
 
