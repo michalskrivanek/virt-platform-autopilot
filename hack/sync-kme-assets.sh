@@ -135,6 +135,7 @@ transform_daemonset() {
 	printf "%s  - name: TLS_KEY_FILE\n%s    value: \"/etc/tls/private/tls.key\"\n", env_indent, env_indent
 	printf "%s  - name: TLS_MIN_VERSION\n%s    value: {{ resolvedTLSMinVersion | quote }}\n", env_indent, env_indent
 	printf "%s  - name: TLS_CIPHER_SUITES\n%s    value: {{ resolvedTLSCipherSuites | quote }}\n", env_indent, env_indent
+	printf "%s  - name: TLS_GROUPS\n%s    value: {{ resolvedTLSGroups | quote }}\n", env_indent, env_indent
 	next
 }
 /^[[:space:]]+volumeMounts:/ {

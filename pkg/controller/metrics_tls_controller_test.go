@@ -53,7 +53,7 @@ func TestMetricsTLSReconcilerNotifiesAfterProfileRefresh(t *testing.T) {
 	select {
 	case <-events:
 		// The event is emitted after RefreshAPIServer has committed the cache.
-		_, minVersion := tlsprofile.CipherSuitesAndMinTLSVersion(nil)
+		_, minVersion, _ := tlsprofile.TLSCfgFromProfile(nil)
 		if minVersion != configv1.VersionTLS13 {
 			t.Fatalf("cached minimum TLS version = %q, want %q", minVersion, configv1.VersionTLS13)
 		}
