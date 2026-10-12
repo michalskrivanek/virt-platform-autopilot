@@ -130,28 +130,6 @@ func TestCustomProfileGoConfig(t *testing.T) {
 	}
 }
 
-func TestMutateTLSConfig(t *testing.T) {
-	resetCaches(t)
-	hyperConvergedProfile.set(modernProfile())
-
-	cfg := &tls.Config{}
-	MutateTLSConfig(cfg)
-	if cfg.GetConfigForClient == nil {
-		t.Fatal("GetConfigForClient not installed")
-	}
-	got, err := cfg.GetConfigForClient(nil)
-	if err != nil {
-		t.Fatalf("GetConfigForClient error: %v", err)
-	}
-	if got.MinVersion != tls.VersionTLS13 {
-		t.Errorf("min version: got %#x want %#x", got.MinVersion, tls.VersionTLS13)
-	}
-	// Modern is TLS 1.3 → cipher suites must not be pinned.
-	if len(got.CipherSuites) != 0 {
-		t.Errorf("expected no pinned ciphers for TLS 1.3, got %d", len(got.CipherSuites))
-	}
-}
-
 func TestSetHyperConvergedProfileFromUnstructured(t *testing.T) {
 	resetCaches(t)
 	hco := &unstructured.Unstructured{Object: map[string]any{

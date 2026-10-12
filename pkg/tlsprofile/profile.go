@@ -114,28 +114,6 @@ func ResolvedGoConfig() (ciphers []uint16, minVersion uint16, curveIDs []tls.Cur
 	return GolangTLSConfigurations(hyperConvergedProfile.get())
 }
 
-// MutateTLSConfig installs a GetConfigForClient callback that applies the
-// currently effective profile (min version, and cipher suites when the minimum
-// is below TLS 1.3 — cipher selection is not configurable for TLS 1.3) to every
-// new connection. It preserves any other settings already present on cfg
-// (notably the certwatcher's GetCertificate, which controller-runtime installs
-// after the TLSOpts mutators run).
-func MutateTLSConfig(cfg *tls.Config) {
-	base := cfg
-	cfg.GetConfigForClient = func(*tls.ClientHelloInfo) (*tls.Config, error) {
-		ciphers, minVersion, curveIds := ResolvedGoConfig()
-		c := base.Clone()
-		c.MinVersion = minVersion
-		if minVersion < tls.VersionTLS13 {
-			c.CipherSuites = ciphers
-		}
-
-		c.CurvePreferences = curveIds
-
-		return c, nil
-	}
-}
-
 // SetHyperConvergedProfile updates the cached HCO override and reports whether it
 // changed. Pass nil when the HCO CR carries no spec.security.tlsSecurityProfile.
 func SetHyperConvergedProfile(p *configv1.TLSSecurityProfile) bool {
