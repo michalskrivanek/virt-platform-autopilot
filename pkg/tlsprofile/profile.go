@@ -79,37 +79,39 @@ func Resolve(fromHC *configv1.TLSSecurityProfile) *configv1.TLSSecurityProfile {
 		(profile.Custom == nil || len(profile.Custom.Ciphers) == 0) {
 		return defaultProfile()
 	}
-	return profile
+	return profile.DeepCopy()
 }
 
-// CipherSuitesAndMinTLSVersion returns the OpenSSL cipher names and minimum TLS
+// TLSCfgFromProfile returns the OpenSSL cipher names and minimum TLS
 // version for the effective profile (see Resolve).
-func CipherSuitesAndMinTLSVersion(fromHC *configv1.TLSSecurityProfile) ([]string, configv1.TLSProtocolVersion) {
+func TLSCfgFromProfile(fromHC *configv1.TLSSecurityProfile) ([]string, configv1.TLSProtocolVersion, []configv1.TLSGroup) {
 	profile := Resolve(fromHC)
 	if profile.Type == configv1.TLSProfileCustomType {
-		return profile.Custom.Ciphers, profile.Custom.MinTLSVersion
+		return profile.Custom.Ciphers, profile.Custom.MinTLSVersion, profile.Custom.Groups
 	}
 	spec := configv1.TLSProfiles[profile.Type]
-	return spec.Ciphers, spec.MinTLSVersion
+	return spec.Ciphers, spec.MinTLSVersion, spec.Groups
 }
 
-// GoCipherSuitesAndMinVersion converts the effective profile into the Go
+// GolangTLSConfigurations converts the effective profile into the Go
 // tls.Config representation: IANA cipher suite IDs and a crypto/tls version
 // constant. Unknown OpenSSL cipher names are dropped by OpenSSLToIANACipherSuites,
 // so an all-unknown Custom list degrades to the crypto defaults rather than
 // panicking.
-func GoCipherSuitesAndMinVersion(fromHC *configv1.TLSSecurityProfile) (ciphers []uint16, minVersion uint16) {
-	cipherNames, minTLSVersion := CipherSuitesAndMinTLSVersion(fromHC)
+func GolangTLSConfigurations(fromHC *configv1.TLSSecurityProfile) (ciphers []uint16, minVersion uint16, curveIDs []tls.CurveID) {
+	cipherNames, minTLSVersion, groups := TLSCfgFromProfile(fromHC)
 	ciphers = crypto.CipherSuitesOrDie(crypto.OpenSSLToIANACipherSuites(cipherNames))
 	minVersion = crypto.TLSVersionOrDie(string(minTLSVersion))
-	return ciphers, minVersion
+	curveIDs, _ = crypto.TLSGroupsToCurveIDs(groups)
+
+	return ciphers, minVersion, curveIDs
 }
 
 // ResolvedGoConfig converts the currently effective profile (using the cached
 // HCO override, if any) into Go tls.Config parameters. This is the entry point
 // used by the metrics TLS server on each new connection.
-func ResolvedGoConfig() (ciphers []uint16, minVersion uint16) {
-	return GoCipherSuitesAndMinVersion(hyperConvergedProfile.get())
+func ResolvedGoConfig() (ciphers []uint16, minVersion uint16, curveIDs []tls.CurveID) {
+	return GolangTLSConfigurations(hyperConvergedProfile.get())
 }
 
 // MutateTLSConfig installs a GetConfigForClient callback that applies the
@@ -121,12 +123,15 @@ func ResolvedGoConfig() (ciphers []uint16, minVersion uint16) {
 func MutateTLSConfig(cfg *tls.Config) {
 	base := cfg
 	cfg.GetConfigForClient = func(*tls.ClientHelloInfo) (*tls.Config, error) {
-		ciphers, minVersion := ResolvedGoConfig()
+		ciphers, minVersion, curveIds := ResolvedGoConfig()
 		c := base.Clone()
 		c.MinVersion = minVersion
 		if minVersion < tls.VersionTLS13 {
 			c.CipherSuites = ciphers
 		}
+
+		c.CurvePreferences = curveIds
+
 		return c, nil
 	}
 }

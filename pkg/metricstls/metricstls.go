@@ -131,12 +131,15 @@ func ConfigureServerTLS(getPool func() *x509.CertPool) func(*tls.Config) {
 	return func(cfg *tls.Config) {
 		base := cfg
 		cfg.GetConfigForClient = func(*tls.ClientHelloInfo) (*tls.Config, error) {
-			ciphers, minVersion := tlsprofile.ResolvedGoConfig()
+			ciphers, minVersion, curveIDs := tlsprofile.ResolvedGoConfig()
 			c := base.Clone()
 			c.MinVersion = minVersion
 			if minVersion < tls.VersionTLS13 {
 				c.CipherSuites = ciphers
 			}
+
+			c.CurvePreferences = curveIDs
+
 			c.ClientAuth = tls.RequireAndVerifyClientCert
 			c.ClientCAs = getPool()
 			return c, nil

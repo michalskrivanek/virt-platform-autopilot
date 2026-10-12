@@ -91,12 +91,16 @@ func TestGoCipherSuitesAndMinVersion(t *testing.T) {
 	}
 	for _, tc := range tests {
 		t.Run(tc.name, func(t *testing.T) {
-			ciphers, minVer := GoCipherSuitesAndMinVersion(tc.profile)
+			ciphers, minVer, curves := GolangTLSConfigurations(tc.profile)
 			if minVer != tc.wantMin {
 				t.Errorf("min version: got %#x want %#x", minVer, tc.wantMin)
 			}
 			if tc.wantCipher && len(ciphers) == 0 {
 				t.Error("expected non-empty cipher list")
+			}
+
+			if len(curves) == 0 {
+				t.Error("expected non-empty curveID list")
 			}
 		})
 	}
@@ -110,15 +114,19 @@ func TestCustomProfileGoConfig(t *testing.T) {
 			TLSProfileSpec: configv1.TLSProfileSpec{
 				Ciphers:       []string{"ECDHE-ECDSA-AES256-GCM-SHA384"},
 				MinTLSVersion: configv1.VersionTLS12,
+				Groups:        []configv1.TLSGroup{configv1.TLSGroupSecP256r1, configv1.TLSGroupX25519},
 			},
 		},
 	}
-	ciphers, minVer := GoCipherSuitesAndMinVersion(custom)
+	ciphers, minVer, groups := GolangTLSConfigurations(custom)
 	if minVer != tls.VersionTLS12 {
 		t.Errorf("min version: got %#x want %#x", minVer, tls.VersionTLS12)
 	}
 	if len(ciphers) != 1 {
 		t.Errorf("expected 1 cipher, got %d", len(ciphers))
+	}
+	if len(groups) != 2 {
+		t.Errorf("expected 2 groups, got %d", len(groups))
 	}
 }
 
