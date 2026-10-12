@@ -39,6 +39,8 @@ spec:
               value: {{ resolvedTLSMinVersion | quote }}
             - name: TLS_CIPHER_SUITES
               value: {{ resolvedTLSCipherSuites | quote }}
+            - name: TLS_GROUPS
+              value: {{ resolvedTLSGroups | quote }}
             - name: NODE_NAME
               valueFrom:
                 fieldRef:

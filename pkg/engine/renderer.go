@@ -220,15 +220,30 @@ func (r *Renderer) customFuncMap() template.FuncMap {
 		// Usage: {{ dig "spec" "field" "default" .HCO }}
 		"dig": dig,
 
-		// resolvedTLSMinVersion and resolvedTLSCipherSuites expose the effective
+		// resolvedTLSMinVersion, resolvedTLSCipherSuites and resolvedTLSGroups,
+		// expose the effective
 		// HCO > APIServer > Intermediate TLS policy to managed workloads.
 		"resolvedTLSMinVersion": func() string {
-			_, minVersion := tlsprofile.CipherSuitesAndMinTLSVersion(nil)
+			_, minVersion, _ := tlsprofile.TLSCfgFromProfile(nil)
 			return string(minVersion)
 		},
 		"resolvedTLSCipherSuites": func() string {
-			ciphers, _ := tlsprofile.CipherSuitesAndMinTLSVersion(nil)
+			ciphers, _, _ := tlsprofile.TLSCfgFromProfile(nil)
 			return strings.Join(ciphers, ",")
+		},
+		"resolvedTLSGroups": func() string {
+			_, _, curveIds := tlsprofile.TLSCfgFromProfile(nil)
+
+			b := new(strings.Builder)
+			if length := len(curveIds); length > 0 {
+				b.WriteString(string(curveIds[0]))
+				for _, id := range curveIds[1:] {
+					b.WriteByte(',')
+					b.WriteString(string(id))
+				}
+			}
+
+			return b.String()
 		},
 
 		// has checks if a slice contains a value
