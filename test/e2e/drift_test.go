@@ -62,18 +62,12 @@ var _ = Describe("Drift Detection Tests", Ordered, func() {
 		}, timeout, interval).Should(Succeed(),
 			"Operator should create the 90-worker-swap-online MachineConfig")
 
-		mc, err := getUnstructuredResource(driftMachineConfigGVK, driftMcName, "")
-		Expect(err).NotTo(HaveOccurred())
 		// This test deliberately validates the documented escape hatch. On OCP a
 		// stable MCP would otherwise correctly stage the update until its next
 		// unrelated rollout, which is not suitable for a drift-correction test.
-		annotations := mc.GetAnnotations()
-		if annotations == nil {
-			annotations = map[string]string{}
-		}
-		annotations[driftCoalescingBypass] = "true"
-		mc.SetAnnotations(annotations)
-		Expect(k8sClient.Update(ctx, mc)).To(Succeed())
+		setAnnotation(driftMachineConfigGVK, driftMcName, "", driftCoalescingBypass, "true")
+		mc, err := getUnstructuredResource(driftMachineConfigGVK, driftMcName, "")
+		Expect(err).NotTo(HaveOccurred())
 		labels := mc.GetLabels()
 		Expect(labels).To(HaveKeyWithValue(driftManagedByLabel, driftManagedByValue),
 			"MachineConfig should have managed-by label")
@@ -81,12 +75,7 @@ var _ = Describe("Drift Detection Tests", Ordered, func() {
 
 	It("should correct drift on MachineConfig spec and emit DriftCorrected event", func() {
 		By("modifying ignition.version to simulate drift")
-		mc, err := getUnstructuredResource(driftMachineConfigGVK, driftMcName, "")
-		Expect(err).NotTo(HaveOccurred())
-
-		// Modify spec.config.ignition.version
-		Expect(setNestedField(mc, "2.0.0", "spec", "config", "ignition", "version")).To(Succeed())
-		Expect(k8sClient.Update(ctx, mc)).To(Succeed())
+		tamperField(testAsset{GVK: driftMachineConfigGVK, Name: driftMcName}, `{"spec":{"config":{"ignition":{"version":"2.0.0"}}}}`)
 
 		By("verifying operator corrects the drift back to expected version")
 		Eventually(func() string {
@@ -98,7 +87,7 @@ var _ = Describe("Drift Detection Tests", Ordered, func() {
 			return val
 		}, timeout, interval).Should(Equal(driftExpectedIgnitionVersion),
 			"Operator should restore ignition.version to expected version")
-		mc, err = getUnstructuredResource(driftMachineConfigGVK, driftMcName, "")
+		mc, err := getUnstructuredResource(driftMachineConfigGVK, driftMcName, "")
 		Expect(err).NotTo(HaveOccurred())
 		Expect(mc.GetAnnotations()).To(HaveKeyWithValue(driftCoalescingBypass, "true"),
 			"Operator should preserve the MachineConfig coalescing bypass annotation")
@@ -111,14 +100,11 @@ var _ = Describe("Drift Detection Tests", Ordered, func() {
 	})
 
 	AfterAll(func() {
+		By("removing coalescing bypass annotation from MachineConfig")
+		removeAnnotation(driftMachineConfigGVK, driftMcName, "", driftCoalescingBypass)
 		waitForOperatorHealthy()
 	})
 })
-
-// setNestedField sets a value in an unstructured object at the given field path.
-func setNestedField(obj *unstructured.Unstructured, value any, fields ...string) error {
-	return unstructured.SetNestedField(obj.Object, value, fields...)
-}
 
 // getNestedString reads a string value from an unstructured object at the given field path.
 func getNestedString(obj *unstructured.Unstructured, fields ...string) (string, bool, error) {
