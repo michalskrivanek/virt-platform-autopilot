@@ -51,6 +51,37 @@ metadata:
 
 Autopilot preserves this annotation and applies future updates immediately. Remove it to resume staging. Use it sparingly: it can start a new MCO rollout and reboot nodes.
 
+To set the default for every existing Autopilot-managed MachineConfig, add the
+same annotation to the HyperConverged (HCO) CR:
+
+```yaml
+apiVersion: hco.kubevirt.io/v1beta1
+kind: HyperConverged
+metadata:
+  name: kubevirt-hyperconverged
+  namespace: openshift-cnv
+  annotations:
+    platform.kubevirt.io/bypass-mcp-rollout-coalescing: "true"
+```
+
+The HCO value is a default, not a forced override. A valid value on an
+individual MachineConfig takes precedence, allowing an administrator to keep a
+particular MachineConfig staged while globally bypassing coalescing:
+
+| HCO annotation | MachineConfig annotation | Result |
+| --- | --- | --- |
+| `true` | absent | bypass staging |
+| `true` | `false` | stage updates |
+| `false` | `true` | bypass staging |
+| absent | `true` | bypass staging |
+| absent | absent | stage updates |
+
+Only valid boolean values participate in this precedence. An invalid value is
+ignored; an invalid MachineConfig value therefore falls back to the HCO default,
+and an invalid or absent HCO value leaves staging enabled. Enabling the HCO
+bypass can release every currently staged managed MachineConfig on its next
+reconcile, so use it only as a temporary, cluster-wide operational override.
+
 Use the bypass only for a MachineConfig whose on-the-fly behavior is covered by
 the MCO's [Node Disruption Policy](https://github.com/openshift/machine-config-operator/blob/main/docs/NodeDisruptionPolicy.md)
 for the target OpenShift version and configuration. When an asset requires a
