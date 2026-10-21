@@ -150,6 +150,64 @@ func TestMachineConfigBypassIsPreservedAndImmediate(t *testing.T) {
 	}
 }
 
+func TestMachineConfigBypassUsesHCODefaultAndMachineConfigOverride(t *testing.T) {
+	tests := []struct {
+		name      string
+		hcoValue  string
+		mcValue   string
+		wantApply bool
+	}{
+		{name: "HCO true bypasses by default", hcoValue: "true", wantApply: true},
+		{name: "MachineConfig false overrides HCO true", hcoValue: "true", mcValue: "false", wantApply: false},
+		{name: "MachineConfig true overrides HCO false", hcoValue: "false", mcValue: "true", wantApply: true},
+		{name: "HCO false coalesces by default", hcoValue: "false", wantApply: false},
+	}
+
+	for _, tt := range tests {
+		t.Run(tt.name, func(t *testing.T) {
+			p := NewPatcher(fake.NewClientBuilder().WithRuntimeObjects(testMCP("worker", "False")).Build(), nil, nil)
+			desired, live := testMachineConfigs()
+			if tt.mcValue != "" {
+				live.SetAnnotations(map[string]string{MachineConfigCoalescingBypassAnnotation: tt.mcValue})
+			}
+			renderCtx := testRenderContext()
+			renderCtx.HCO.SetAnnotations(map[string]string{MachineConfigCoalescingBypassAnnotation: tt.hcoValue})
+
+			apply, err := p.coalesceMachineConfigUpdate(context.Background(), desired, live, testHash(t, desired), renderCtx)
+			if err != nil || apply != tt.wantApply {
+				t.Fatalf("apply=%t err=%v, want %t nil", apply, err, tt.wantApply)
+			}
+		})
+	}
+}
+
+func TestHCOMachineConfigBypassReleasesStagedUpdate(t *testing.T) {
+	ctx := context.Background()
+	p := NewPatcher(fake.NewClientBuilder().WithRuntimeObjects(testMCP("worker", "False")).Build(), nil, nil)
+	desired, live := testMachineConfigs()
+	renderCtx := testRenderContext()
+	hash := testHash(t, desired)
+
+	apply, err := p.coalesceMachineConfigUpdate(ctx, desired, live, hash, renderCtx)
+	if err != nil || apply {
+		t.Fatalf("initial coalesce: apply=%t err=%v, want false nil", apply, err)
+	}
+	stage, err := p.machineConfigStage(ctx, "openshift-cnv", desired.GetName())
+	if err != nil || stage == nil {
+		t.Fatalf("staged update = %v, err=%v, want non-nil nil", stage, err)
+	}
+
+	renderCtx.HCO.SetAnnotations(map[string]string{MachineConfigCoalescingBypassAnnotation: "true"})
+	apply, err = p.coalesceMachineConfigUpdate(ctx, desired, live, hash, renderCtx)
+	if err != nil || !apply {
+		t.Fatalf("HCO bypass: apply=%t err=%v, want true nil", apply, err)
+	}
+	stage, err = p.machineConfigStage(ctx, "openshift-cnv", desired.GetName())
+	if err != nil || stage != nil {
+		t.Fatalf("stage after HCO bypass = %v, err=%v, want nil nil", stage, err)
+	}
+}
+
 // Staging is the safe default: a typo in the bypass annotation must not silently
 // start a node-rebooting rollout.
 func TestMachineConfigBypassIgnoresUnparseableValue(t *testing.T) {
@@ -160,6 +218,19 @@ func TestMachineConfigBypassIgnoresUnparseableValue(t *testing.T) {
 	apply, err := p.coalesceMachineConfigUpdate(ctx, desired, live, testHash(t, desired), testRenderContext())
 	if err != nil || apply {
 		t.Fatalf("unparseable bypass: apply=%t err=%v, want false nil", apply, err)
+	}
+}
+
+func TestMachineConfigBypassIgnoresUnparseableMachineConfigValueAndUsesHCODefault(t *testing.T) {
+	p := NewPatcher(fake.NewClientBuilder().Build(), nil, nil)
+	desired, live := testMachineConfigs()
+	live.SetAnnotations(map[string]string{MachineConfigCoalescingBypassAnnotation: "yes-please"})
+	renderCtx := testRenderContext()
+	renderCtx.HCO.SetAnnotations(map[string]string{MachineConfigCoalescingBypassAnnotation: "true"})
+
+	apply, err := p.coalesceMachineConfigUpdate(context.Background(), desired, live, testHash(t, desired), renderCtx)
+	if err != nil || !apply {
+		t.Fatalf("unparseable MachineConfig bypass with HCO default: apply=%t err=%v, want true nil", apply, err)
 	}
 }
 

@@ -37,8 +37,10 @@ import (
 )
 
 const (
-	// MachineConfigCoalescingBypassAnnotation opts one managed MachineConfig out
-	// of staging. It is deliberately read from (and preserved on) the live MC.
+	// MachineConfigCoalescingBypassAnnotation controls MachineConfig update
+	// staging. On the HCO it supplies the cluster-wide default; on a managed
+	// MachineConfig it overrides that default. The MachineConfig value is
+	// deliberately read from (and preserved on) the live object.
 	MachineConfigCoalescingBypassAnnotation = "platform.kubevirt.io/bypass-mcp-rollout-coalescing"
 	machineConfigStagingConfigMap           = "virt-platform-autopilot-mc-staging"
 	machineConfigGroup                      = "machineconfiguration.openshift.io"
@@ -97,7 +99,7 @@ func (p *Patcher) coalesceMachineConfigUpdate(ctx context.Context, desired, live
 	}
 
 	p.copyMachineConfigBypassAnnotation(desired, live)
-	if machineConfigCoalescingBypassed(live) {
+	if machineConfigCoalescingBypassed(live, renderCtx.HCO) {
 		return true, p.unstageMachineConfigUpdate(ctx, namespace, desired.GetName())
 	}
 
@@ -177,16 +179,33 @@ func (p *Patcher) clearMachineConfigStaging(ctx context.Context, desired *unstru
 	return stage, p.unstageMachineConfigUpdate(ctx, namespace, desired.GetName())
 }
 
-// machineConfigCoalescingBypassed reports whether the live MachineConfig opts out
-// of staging. An unparseable value is treated as "no bypass": staging is the safe
-// default, and a typo must not silently start a node-rebooting rollout.
-func machineConfigCoalescingBypassed(live *unstructured.Unstructured) bool {
-	value, ok := live.GetAnnotations()[MachineConfigCoalescingBypassAnnotation]
+// machineConfigCoalescingBypassed reports whether staging is bypassed. A valid
+// annotation on the live MachineConfig overrides a valid HCO annotation; the HCO
+// supplies the default for MachineConfigs without one. An unparseable value is
+// ignored, so it cannot by itself silently start a node-rebooting rollout.
+func machineConfigCoalescingBypassed(live, hco *unstructured.Unstructured) bool {
+	if bypass, set := machineConfigCoalescingBypassValue(live); set {
+		return bypass
+	}
+	if bypass, set := machineConfigCoalescingBypassValue(hco); set {
+		return bypass
+	}
+	return false
+}
+
+// machineConfigCoalescingBypassValue returns a value only for a valid boolean
+// annotation. This lets an invalid per-MachineConfig annotation fall back to the
+// HCO default rather than accidentally acting as an override.
+func machineConfigCoalescingBypassValue(obj *unstructured.Unstructured) (bool, bool) {
+	if obj == nil {
+		return false, false
+	}
+	value, ok := obj.GetAnnotations()[MachineConfigCoalescingBypassAnnotation]
 	if !ok {
-		return false
+		return false, false
 	}
 	bypass, err := strconv.ParseBool(value)
-	return err == nil && bypass
+	return bypass, err == nil
 }
 
 func (p *Patcher) copyMachineConfigBypassAnnotation(desired, live *unstructured.Unstructured) {
