@@ -41,7 +41,8 @@ reconciliation rather than leaving updates staged indefinitely.
 
 ## Bypass staging
 
-For a time-sensitive change, add this annotation to the live Autopilot-managed MachineConfig:
+For a time-sensitive change, add this annotation to the live Autopilot-managed
+MachineConfig (one object) or to HyperConverged (every managed MachineConfig):
 
 ```yaml
 metadata:
@@ -49,7 +50,10 @@ metadata:
     platform.kubevirt.io/bypass-mcp-rollout-coalescing: "true"
 ```
 
-Autopilot preserves this annotation and applies future updates immediately. Remove it to resume staging. Use it sparingly: it can start a new MCO rollout and reboot nodes.
+On a MachineConfig, Autopilot preserves the annotation and applies future updates
+immediately. On HyperConverged the same key disables staging globally. Remove it
+to resume staging. Use it sparingly: it can start a new MCO rollout and reboot
+nodes.
 
 Use the bypass only for a MachineConfig whose on-the-fly behavior is covered by
 the MCO's [Node Disruption Policy](https://github.com/openshift/machine-config-operator/blob/main/docs/NodeDisruptionPolicy.md)

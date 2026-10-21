@@ -150,6 +150,22 @@ func TestMachineConfigBypassIsPreservedAndImmediate(t *testing.T) {
 	}
 }
 
+func TestMachineConfigBypassOnHCOIsGlobal(t *testing.T) {
+	ctx := context.Background()
+	p := NewPatcher(fake.NewClientBuilder().WithRuntimeObjects(testMCP("worker", "False")).Build(), nil, nil)
+	desired, live := testMachineConfigs()
+	renderCtx := testRenderContext()
+	renderCtx.HCO.SetAnnotations(map[string]string{MachineConfigCoalescingBypassAnnotation: "true"})
+	apply, err := p.coalesceMachineConfigUpdate(ctx, desired, live, testHash(t, desired), renderCtx)
+	if err != nil || !apply {
+		t.Fatalf("HCO bypass: apply=%t err=%v, want true nil", apply, err)
+	}
+	stage, err := p.machineConfigStage(ctx, "openshift-cnv", desired.GetName())
+	if err != nil || stage != nil {
+		t.Fatalf("HCO bypass must not stage: stage=%v err=%v", stage, err)
+	}
+}
+
 // Staging is the safe default: a typo in the bypass annotation must not silently
 // start a node-rebooting rollout.
 func TestMachineConfigBypassIgnoresUnparseableValue(t *testing.T) {

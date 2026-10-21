@@ -37,8 +37,9 @@ import (
 )
 
 const (
-	// MachineConfigCoalescingBypassAnnotation opts one managed MachineConfig out
-	// of staging. It is deliberately read from (and preserved on) the live MC.
+	// MachineConfigCoalescingBypassAnnotation opts out of staging. On a live
+	// MachineConfig it bypasses that object only (and is preserved across
+	// applies). On HyperConverged it bypasses every managed MachineConfig.
 	MachineConfigCoalescingBypassAnnotation = "platform.kubevirt.io/bypass-mcp-rollout-coalescing"
 	machineConfigStagingConfigMap           = "virt-platform-autopilot-mc-staging"
 	machineConfigGroup                      = "machineconfiguration.openshift.io"
@@ -97,7 +98,7 @@ func (p *Patcher) coalesceMachineConfigUpdate(ctx context.Context, desired, live
 	}
 
 	p.copyMachineConfigBypassAnnotation(desired, live)
-	if machineConfigCoalescingBypassed(live) {
+	if machineConfigCoalescingBypassed(live) || machineConfigCoalescingBypassed(renderCtx.HCO) {
 		return true, p.unstageMachineConfigUpdate(ctx, namespace, desired.GetName())
 	}
 
@@ -177,11 +178,14 @@ func (p *Patcher) clearMachineConfigStaging(ctx context.Context, desired *unstru
 	return stage, p.unstageMachineConfigUpdate(ctx, namespace, desired.GetName())
 }
 
-// machineConfigCoalescingBypassed reports whether the live MachineConfig opts out
+// machineConfigCoalescingBypassed reports whether obj (live MC or HCO) opts out
 // of staging. An unparseable value is treated as "no bypass": staging is the safe
 // default, and a typo must not silently start a node-rebooting rollout.
-func machineConfigCoalescingBypassed(live *unstructured.Unstructured) bool {
-	value, ok := live.GetAnnotations()[MachineConfigCoalescingBypassAnnotation]
+func machineConfigCoalescingBypassed(obj *unstructured.Unstructured) bool {
+	if obj == nil {
+		return false
+	}
+	value, ok := obj.GetAnnotations()[MachineConfigCoalescingBypassAnnotation]
 	if !ok {
 		return false
 	}
