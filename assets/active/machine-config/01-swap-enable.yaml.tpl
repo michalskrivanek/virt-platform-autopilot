@@ -47,16 +47,16 @@ spec:
           [Unit]
           Description=Enable OCP file swap
           ConditionFirstBoot=no
-          ConditionPathExists=/var/ocpswap.file
+          ConditionPathExists=/var/swapfile
 
           [Service]
           Type=oneshot
-          ExecStart=/bin/sh -c "swapon --priority 10 /var/ocpswap.file"
+          ExecStart=/bin/sh -c "swapon --priority 10 /var/swapfile"
 
           [Install]
           RequiredBy=kubelet-dependencies.target
         enabled: true
-        name: ocpswap-file-enable.service
+        name: swap-file-enable.service
       - contents: |
           [Unit]
           Description=KubeVirt adaptive watermark tuning for swap optimization
