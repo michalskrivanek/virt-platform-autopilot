@@ -1,0 +1,23 @@
+apiVersion: operator.openshift.io/v1
+kind: MachineConfiguration
+metadata:
+  name: cluster
+spec:
+  nodeDisruptionPolicy:
+    files:
+    - path: /usr/local/bin/kubevirt-ksm-tune.py
+      actions:
+      # MCO needs a daemon reload when this policy handles either updating or
+      # removing the file; the oneshot unit must then run the new program.
+      - type: DaemonReload
+      - type: Restart
+        restart:
+          serviceName: kubevirt-ksm-tune.service
+    units:
+    - name: kubevirt-ksm-tune.service
+      actions:
+      # Make systemd read a changed unit before executing its new definition.
+      - type: DaemonReload
+      - type: Restart
+        restart:
+          serviceName: kubevirt-ksm-tune.service
