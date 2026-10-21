@@ -66,6 +66,21 @@ func TestValidatePatchSecurity(t *testing.T) {
 			errMsg:  "JSON patches are not allowed on sensitive resource kind: MachineConfig",
 		},
 		{
+			name: "patch on sensitive kind (MachineConfiguration)",
+			obj: &unstructured.Unstructured{
+				Object: map[string]any{
+					"kind": "MachineConfiguration",
+					"metadata": map[string]any{
+						"annotations": map[string]any{
+							PatchAnnotation: `[{"op": "add", "path": "/spec/nodeDisruptionPolicy", "value": {}}]`,
+						},
+					},
+				},
+			},
+			wantErr: true,
+			errMsg:  "JSON patches are not allowed on sensitive resource kind: MachineConfiguration",
+		},
+		{
 			name: "no patch on sensitive kind (MachineConfig)",
 			obj: &unstructured.Unstructured{
 				Object: map[string]any{

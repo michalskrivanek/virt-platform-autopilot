@@ -19,6 +19,7 @@ package engine
 import (
 	"context"
 	"fmt"
+	"strings"
 
 	"k8s.io/apimachinery/pkg/api/errors"
 	apimeta "k8s.io/apimachinery/pkg/api/meta"
@@ -55,6 +56,130 @@ func (r *TombstoneReconciler) SetEventRecorder(recorder *util.EventRecorder) {
 // Returns the number of successfully deleted resources and any errors encountered
 // Uses best-effort error handling - continues processing even if some deletions fail
 func (r *TombstoneReconciler) ReconcileTombstones(ctx context.Context, hco *unstructured.Unstructured) (int, error) {
+	return r.ReconcileTombstonesMatching(ctx, hco, nil)
+}
+
+// HasTombstonesMatching reports whether there is a tombstone accepted by
+// match. It is used to avoid waiting on an unrelated dependency when there is
+// no pending deletion in that dependency-sensitive subset.
+func (r *TombstoneReconciler) HasTombstonesMatching(match func(assets.TombstoneMetadata) bool) (bool, error) {
+	tombstones, err := r.loader.LoadTombstones()
+	if err != nil {
+		return false, fmt.Errorf("failed to load tombstones: %w", err)
+	}
+	for _, ts := range tombstones {
+		if match == nil || match(ts) {
+			return true, nil
+		}
+	}
+	return false, nil
+}
+
+// MachineConfigTombstonesHaveEffectiveNodeDisruptionPolicy reports whether an
+// action currently effective in MCO applies to a file or unit provided by a
+// managed, tombstoned MachineConfig. The caller must first reconcile the
+// active aggregate policy and wait for MCO before deleting that MachineConfig.
+// This derives the safety condition from live objects, so retiring a feature
+// does not require retaining a policy asset or adding a tombstone annotation.
+func (r *TombstoneReconciler) MachineConfigTombstonesHaveEffectiveNodeDisruptionPolicy(ctx context.Context) (bool, error) {
+	tombstones, err := r.loader.LoadTombstones()
+	if err != nil {
+		return false, fmt.Errorf("failed to load tombstones: %w", err)
+	}
+	policy := &unstructured.Unstructured{}
+	policy.SetAPIVersion("operator.openshift.io/v1")
+	policy.SetKind("MachineConfiguration")
+	if err := r.client.Get(ctx, client.ObjectKey{Name: "cluster"}, policy); err != nil {
+		if errors.IsNotFound(err) || apimeta.IsNoMatchError(err) {
+			return false, nil
+		}
+		return false, fmt.Errorf("read MachineConfiguration %q: %w", "cluster", err)
+	}
+	effective, found, err := unstructured.NestedMap(policy.Object, "status", "nodeDisruptionPolicyStatus", "clusterPolicies")
+	if err != nil || !found {
+		return false, err
+	}
+	for _, ts := range tombstones {
+		if !isMachineConfigTombstoneMetadata(ts) {
+			continue
+		}
+		live := &unstructured.Unstructured{}
+		live.SetGroupVersionKind(ts.GVK)
+		if err := r.client.Get(ctx, client.ObjectKey{Name: ts.Name, Namespace: ts.Namespace}, live); err != nil {
+			if errors.IsNotFound(err) || apimeta.IsNoMatchError(err) {
+				continue
+			}
+			return false, fmt.Errorf("read MachineConfig tombstone %q: %w", ts.Name, err)
+		}
+		labels := live.GetLabels()
+		if labels[assets.TombstoneLabel] != assets.TombstoneLabelValue {
+			continue
+		}
+		blocked, err := machineConfigHasEffectiveNodeDisruptionPolicy(live, effective)
+		if err != nil {
+			return false, fmt.Errorf("read MachineConfig tombstone %q policy actions: %w", ts.Name, err)
+		}
+		if blocked {
+			return true, nil
+		}
+	}
+	return false, nil
+}
+
+func machineConfigHasEffectiveNodeDisruptionPolicy(machineConfig *unstructured.Unstructured, effective map[string]any) (bool, error) {
+	for _, entryType := range []struct{ policyField, machineConfigField, identifier string }{
+		{policyField: "files", machineConfigField: "storage.files", identifier: "path"},
+		{policyField: "units", machineConfigField: "systemd.units", identifier: "name"},
+	} {
+		effectiveEntries, _, err := unstructured.NestedSlice(effective, entryType.policyField)
+		if err != nil {
+			return false, err
+		}
+		effectiveNames := map[string]bool{}
+		for _, entry := range effectiveEntries {
+			entry, ok := entry.(map[string]any)
+			if !ok {
+				continue
+			}
+			name, found, err := unstructured.NestedString(entry, entryType.identifier)
+			if err != nil {
+				return false, err
+			}
+			if found {
+				effectiveNames[name] = true
+			}
+		}
+		path := strings.Split(entryType.machineConfigField, ".")
+		entries, _, err := unstructured.NestedSlice(machineConfig.Object, append([]string{"spec", "config"}, path...)...)
+		if err != nil {
+			return false, err
+		}
+		for _, entry := range entries {
+			entry, ok := entry.(map[string]any)
+			if !ok {
+				continue
+			}
+			name, found, err := unstructured.NestedString(entry, entryType.identifier)
+			if err != nil {
+				return false, err
+			}
+			if found && effectiveNames[name] {
+				return true, nil
+			}
+		}
+	}
+	return false, nil
+}
+
+func isMachineConfigTombstoneMetadata(ts assets.TombstoneMetadata) bool {
+	return ts.GVK.Group == "machineconfiguration.openshift.io" && ts.GVK.Kind == "MachineConfig"
+}
+
+// ReconcileTombstonesMatching processes only tombstones accepted by match.
+// A nil match accepts every tombstone. It lets callers hold back a small,
+// dependency-sensitive subset without weakening the normal best-effort
+// lifecycle cleanup for unrelated resources.
+func (r *TombstoneReconciler) ReconcileTombstonesMatching(ctx context.Context, hco *unstructured.Unstructured, match func(assets.TombstoneMetadata) bool) (int, error) {
 	logger := log.FromContext(ctx)
 
 	// Load tombstones from embedded filesystem
@@ -75,6 +200,9 @@ func (r *TombstoneReconciler) ReconcileTombstones(ctx context.Context, hco *unst
 
 	// Process each tombstone
 	for _, ts := range tombstones {
+		if match != nil && !match(ts) {
+			continue
+		}
 		deleted, err := r.reconcileTombstone(ctx, ts, hco)
 		if err != nil {
 			// Log error but continue processing remaining tombstones (best-effort)

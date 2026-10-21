@@ -132,6 +132,7 @@ declare -a CRD_METADATA=(
     "OpenShift Platform|MachineConfig|openshift/api|master|machineconfiguration/v1/zz_generated.crd-manifests/0000_80_machine-config_01_machineconfigs.crd.yaml|openshift/machineconfig-crd.yaml"
     "OpenShift Platform|MachineConfigPool|openshift/api|master|machineconfiguration/v1/zz_generated.crd-manifests/0000_80_machine-config_01_machineconfigpools.crd.yaml|openshift/machineconfigpool-crd.yaml"
     "OpenShift Platform|KubeletConfig|openshift/api|master|machineconfiguration/v1/zz_generated.crd-manifests/0000_80_machine-config_01_kubeletconfigs-Default.crd.yaml|openshift/kubeletconfig-crd.yaml"
+    "OpenShift Platform|MachineConfiguration|openshift/api|master|operator/v1/zz_generated.crd-manifests/0000_80_machine-config_01_machineconfigurations-Default.crd.yaml|openshift/machineconfiguration-crd.yaml"
     "OpenShift Platform|Infrastructure|openshift/api|master|config/v1/zz_generated.crd-manifests/0000_10_config-operator_01_infrastructures-Default.crd.yaml|openshift/infrastructure-crd.yaml"
     "OpenShift Platform|KubeDescheduler|openshift/cluster-kube-descheduler-operator|main|manifests/kube-descheduler-operator.crd.yaml|openshift/operator.openshift.io_kubedeschedulers.yaml"
 

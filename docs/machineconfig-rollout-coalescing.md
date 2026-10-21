@@ -41,7 +41,7 @@ reconciliation rather than leaving updates staged indefinitely.
 
 ## Bypass staging
 
-For a time-sensitive change, add this annotation to the live Autopilot-managed MachineConfig:
+For an exceptional time-sensitive change, add this annotation to the live Autopilot-managed MachineConfig:
 
 ```yaml
 metadata:
@@ -89,6 +89,68 @@ specific `MachineConfiguration` cluster singleton setting to make that behavior
 safe, manage that setting in a companion Autopilot asset. Keeping the singleton
 change and bypassed MachineConfig together makes the exception explicit,
 reviewable, and scoped to that use case.
+
+For a managed asset whose on-the-fly behavior is covered by the MCO's [Node
+Disruption Policy](https://github.com/openshift/machine-config-operator/blob/main/docs/NodeDisruptionPolicy.md), do not add this annotation to its template.
+Instead, declare `node_disruption_policy.asset` in `assets/active/metadata.yaml`
+and point it at a companion `MachineConfiguration` asset. Autopilot then applies
+the policy first, waits until MCO publishes matching effective entries in
+`status.nodeDisruptionPolicyStatus`, and injects the bypass annotation only for
+the dependent MachineConfig. The feature author remains responsible for the
+policy paths and actions; Autopilot does not infer rebootless behavior. The
+engine writes `platform.kubevirt.io/node-disruption-policy-effective=true` only
+after that status check; input values for this engine-owned marker are ignored.
+Autopilot watches the `MachineConfiguration` singleton, so an MCO status update
+retries deferred dependents immediately rather than waiting for the periodic
+reconciliation interval.
+It permits this bypass only for `storage.files`, `systemd.units`, and SSH
+authorized-key changes (plus the required Ignition version), and requires every
+file and unit to be listed in the referenced policy. Other MachineConfig
+changes, including kernel arguments, are rejected rather than bypassed.
+
+## Node Disruption Policy lifecycle
+
+`MachineConfiguration/cluster` is a singleton, while its `files` and `units`
+are keyed map-lists (`path` and `name`, respectively). Autopilot therefore
+computes one aggregate Node Disruption Policy from every active, non-excluded
+MachineConfig that declares `node_disruption_policy`. It owns an entry only
+while at least one such MachineConfig references the same key. Identical shared
+entries are retained once; two active assets that declare different actions for
+the same path or unit are rejected rather than depending on reconciliation
+order.
+
+When the last dependent is disabled, becomes ineligible, or is root-excluded,
+Autopilot removes its policy entry. This is intentionally a lifecycle cleanup,
+not a rebootless deletion protocol: removing the MachineConfig afterwards uses
+the MCO's ordinary rollout behavior. The aggregate still respects the normal
+controls on `MachineConfiguration/cluster`: root exclusion, `mode: unmanaged`,
+and `ignore-fields`. JSON patches are not supported for
+`MachineConfiguration`, just as they are not supported for `MachineConfig`.
+
+This does not change Autopilot's normal opt-out behavior: disabling a feature
+or root-excluding its MachineConfig leaves that artifact in the cluster for the
+administrator to manage or delete. The exception is the corresponding entry in
+the shared NDP singleton. It must be removed because retaining an action for a
+file or unit that the later MachineConfig deletion removes can block the MCP
+rollout.
+
+For a manual removal, first disable or root-exclude the dependent feature and
+wait for Autopilot to reconcile the aggregate policy. Confirm that the entry is
+absent from `MachineConfiguration/cluster.spec.nodeDisruptionPolicy` and that
+MCO has observed its new generation before deleting the MachineConfig. Do not
+delete a still-managed dependent directly: Autopilot will recreate it, and a
+stale policy could instruct MCO to restart a service that the deleted
+MachineConfig has already removed. If the singleton policy is unmanaged or
+root-excluded, Autopilot deliberately leaves it untouched; the administrator
+must perform the policy cleanup before deleting dependent MachineConfigs.
+
+The same observed-generation barrier protects Autopilot's MachineConfig
+tombstones. Before deleting one, Autopilot compares the live MachineConfig's
+file paths and unit names with MCO's effective policy status. If any action
+still applies, it reconciles the active aggregate, waits for MCO to observe the
+generation, and checks those paths and units again. Unrelated administrator
+policy entries do not block deletion. No retained policy asset or tombstone
+annotation is required.
 
 ## Observability
 

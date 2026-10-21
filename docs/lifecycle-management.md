@@ -84,6 +84,37 @@ The tombstoning system includes multiple safety checks:
    - Delete if label matches (skip if label missing/incorrect)
 3. Emit events and update metrics
 
+### MachineConfig tombstones with a Node Disruption Policy
+
+A tombstoned `MachineConfig` can remove a file or systemd unit that a previous
+Node Disruption Policy would otherwise try to act on. When the catalog contains
+Node Disruption Policy dependents, Autopilot handles this ordering specially:
+
+1. It compares the live MachineConfig's file paths and systemd unit names with
+   MCO's effective policy status.
+2. If an action still applies, it reconciles the active aggregate policy and
+   waits for MCO to report `status.observedGeneration` for that generation.
+3. It checks the same paths and units again, then deletes only once none has an
+   effective action.
+
+This guard is deliberately conservative. If the singleton is root-excluded,
+`mode: unmanaged`, or its API is unavailable, MachineConfig tombstones remain
+pending rather than being deleted under an unknown or stale policy. Other
+tombstone kinds retain the usual best-effort, first-phase cleanup behavior.
+
+Autopilot does not generally delete artifacts when a feature is opted out; an
+administrator normally performs that deletion. The NDP entry is the narrow
+exception because it is shared singleton state rather than the opted-out
+artifact itself, and retaining it can block the MCP when the artifact is later
+removed.
+
+The check derives its inputs from the live, labeled MachineConfig and MCO
+status, so a feature can retire its policy asset and MachineConfig together.
+If the singleton is root-excluded, unmanaged, unavailable, or has ignored
+fields, the tombstone stays pending. JSON patches are rejected for
+`MachineConfiguration`, so they cannot alter the deletion barrier. This is
+safer than deleting under a policy whose effective actions cannot be proven.
+
 **Removing a tombstone** (after 2-3 releases):
 
 1. Confirm resource is deleted from all supported clusters

@@ -42,9 +42,14 @@ const (
 	// MachineConfig it overrides that default. The MachineConfig value is
 	// deliberately read from (and preserved on) the live object.
 	MachineConfigCoalescingBypassAnnotation = "platform.kubevirt.io/bypass-mcp-rollout-coalescing"
-	machineConfigStagingConfigMap           = "virt-platform-autopilot-mc-staging"
-	machineConfigGroup                      = "machineconfiguration.openshift.io"
-	machineConfigKind                       = "MachineConfig"
+	// NodeDisruptionPolicyCoalescingBypassAnnotation is written only after MCO
+	// reports the dependent's NDP actions as effective. It is separate from the
+	// administrator-controlled generic bypass annotation, whose live value is
+	// deliberately preserved during ordinary MachineConfig reconciliation.
+	NodeDisruptionPolicyCoalescingBypassAnnotation = "platform.kubevirt.io/node-disruption-policy-effective"
+	machineConfigStagingConfigMap                  = "virt-platform-autopilot-mc-staging"
+	machineConfigGroup                             = "machineconfiguration.openshift.io"
+	machineConfigKind                              = "MachineConfig"
 )
 
 var machineConfigPoolGVK = schema.GroupVersionKind{Group: machineConfigGroup, Version: "v1", Kind: "MachineConfigPool"}
@@ -99,7 +104,7 @@ func (p *Patcher) coalesceMachineConfigUpdate(ctx context.Context, desired, live
 	}
 
 	p.copyMachineConfigBypassAnnotation(desired, live)
-	if machineConfigCoalescingBypassed(live, renderCtx.HCO) {
+	if machineConfigCoalescingBypassed(desired, renderCtx.HCO) {
 		return true, p.unstageMachineConfigUpdate(ctx, namespace, desired.GetName())
 	}
 
@@ -180,11 +185,14 @@ func (p *Patcher) clearMachineConfigStaging(ctx context.Context, desired *unstru
 }
 
 // machineConfigCoalescingBypassed reports whether staging is bypassed. A valid
-// annotation on the live MachineConfig overrides a valid HCO annotation; the HCO
-// supplies the default for MachineConfigs without one. An unparseable value is
-// ignored, so it cannot by itself silently start a node-rebooting rollout.
-func machineConfigCoalescingBypassed(live, hco *unstructured.Unstructured) bool {
-	if bypass, set := machineConfigCoalescingBypassValue(live); set {
+// annotation on the effective desired MachineConfig overrides a valid HCO
+// annotation; the HCO supplies the default. An unparseable value is ignored, so
+// it cannot by itself silently start a node-rebooting rollout.
+func machineConfigCoalescingBypassed(desired, hco *unstructured.Unstructured) bool {
+	if value, ok := desired.GetAnnotations()[NodeDisruptionPolicyCoalescingBypassAnnotation]; ok && value == "true" {
+		return true
+	}
+	if bypass, set := machineConfigCoalescingBypassValue(desired); set {
 		return bypass
 	}
 	if bypass, set := machineConfigCoalescingBypassValue(hco); set {

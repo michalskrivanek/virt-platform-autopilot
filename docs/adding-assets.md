@@ -281,6 +281,8 @@ The `assets/active/metadata.yaml` catalog defines all managed assets.
   install: always                          # always | opt-in
   component: MachineConfig                 # Logical grouping
   reconcile_order: 10                      # Processing order (lower = earlier)
+  node_disruption_policy:                  # Optional rebootless-update dependency
+    asset: my-node-disruption-policy
   conditions: []                           # Activation conditions (optional)
 ```
 
@@ -315,6 +317,29 @@ The `assets/active/metadata.yaml` catalog defines all managed assets.
 - `1-9`: Critical baseline (MachineConfig, Kubelet)
 - `10-19`: Scheduling and placement (Descheduler)
 - `20+`: Optional operators and advanced features
+
+**node_disruption_policy**: Opt a `MachineConfig` into the MCO Node Disruption
+Policy workflow. `asset` names a companion `MachineConfiguration` asset that
+must have a lower `reconcile_order`. Autopilot reconciles its aggregate entries
+first, waits until `MachineConfiguration/cluster.status.nodeDisruptionPolicyStatus`
+contains the same requested entries and action order, then applies the
+MachineConfig with rollout coalescing bypassed. Keep the policy's paths, units,
+and actions explicit in the companion asset; Autopilot does not infer their
+safety.
+
+To add a rebootless MachineConfig, add the policy YAML, reference it from every
+dependent MachineConfig, and add render coverage proving that the policy covers
+each dependent's files, units, and SSH keys. The catalog test validates every
+declared dependency and rejects conflicting shared map-list entries in CI.
+
+The companion policy is not reconciled independently: all active dependents are
+merged into one desired policy for the `MachineConfiguration/cluster` singleton.
+The `files` key is `path`; the `units` key is `name`. Multiple dependents may
+share an exactly identical entry, but different definitions for the same key
+are an error. Once the last active, non-root-excluded dependent drops a key,
+Autopilot removes it from the aggregate before a human deletes the dependent
+MachineConfig. Policy assets must therefore describe only their dependent's
+entries. Do not use a policy asset to own unrelated singleton configuration.
 
 **conditions**: Array of conditions that must ALL be true for asset to be applied.
 
