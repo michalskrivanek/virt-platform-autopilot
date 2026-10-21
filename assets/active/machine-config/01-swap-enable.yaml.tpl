@@ -37,7 +37,8 @@ spec:
 
           [Service]
           Type=oneshot
-          ExecStart=/bin/sh -c "swapon --priority 100 /dev/disk/by-partlabel/OCPSWAP"
+          RemainAfterExit=true
+          ExecStart=/bin/sh -c 'swapon --priority 100 /dev/disk/by-partlabel/OCPSWAP && echo "Enabled partition swap /dev/disk/by-partlabel/OCPSWAP (priority 100)"'
 
           [Install]
           RequiredBy=kubelet-dependencies.target
@@ -51,7 +52,8 @@ spec:
 
           [Service]
           Type=oneshot
-          ExecStart=/bin/sh -c "swapon --priority 10 /var/swapfile"
+          RemainAfterExit=true
+          ExecStart=/bin/sh -c 'swapon --priority 10 /var/swapfile && echo "Enabled file swap /var/swapfile (priority 10)"'
 
           [Install]
           RequiredBy=kubelet-dependencies.target

@@ -52,9 +52,10 @@ is_expected_swap_file() {
 
 # Persist the SELinux type for the final path, so a complete filesystem relabel
 # restores swapfile_t rather than reverting the file to /var's default type.
+# Skip semanage when the path already maps to swapfile_t.
 set_swap_file_context() {
-  if ! semanage fcontext -a -f a -t swapfile_t "${swap_file}" 2>/dev/null; then
-    semanage fcontext -m -f a -t swapfile_t "${swap_file}"
+  if [[ "$(matchpathcon -n "${swap_file}")" != *:swapfile_t:* ]]; then
+    semanage fcontext -a -f a -t swapfile_t "${swap_file}"
   fi
   restorecon -v "${swap_file}"
 }
@@ -144,6 +145,7 @@ if [[ -e "${swap_file}" ]]; then
   fi
   existing_size_bytes=$(stat -c '%s' "${swap_file}")
   reclaimable_mb=$(( (existing_size_bytes + 1048575) / 1048576 ))
+  echo "existing file-backed swap ${swap_file} is ${reclaimable_mb} MiB; trying to replace with ${swap_size_mb} MiB"
 fi
 
 # One df for both figures. A df failure leaves them empty rather than aborting
