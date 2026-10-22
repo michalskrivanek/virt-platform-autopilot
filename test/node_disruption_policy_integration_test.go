@@ -59,7 +59,7 @@ var _ = Describe("MachineConfiguration node disruption policy SSA", func() {
 		// After the final dependent is disabled, the real NDP reconciler applies
 		// its empty aggregate. This must release only Autopilot-owned entries.
 		patcher := engine.NewPatcher(k8sClient, apiReader, assets.NewLoader())
-		managed, err := patcher.ReconcileNodeDisruptionPolicies(ctx, []assets.AssetMetadata{{
+		managed, _, err := patcher.ReconcileNodeDisruptionPolicies(ctx, []assets.AssetMetadata{{
 			Name: "disabled-dependent",
 			NodeDisruptionPolicy: &assets.NodeDisruptionPolicyDependency{
 				Asset: "unused-while-inactive",

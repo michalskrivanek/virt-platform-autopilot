@@ -187,9 +187,59 @@ func TestAggregateNodeDisruptionPolicies(t *testing.T) {
 	assertEntries(t, map[string]bool{}, 0)
 }
 
+func TestNodeDisruptionPolicyChangeCount(t *testing.T) {
+	policy := func(files, units []any) *unstructured.Unstructured {
+		return &unstructured.Unstructured{Object: map[string]any{
+			"apiVersion": machineConfigurationAPIVersion,
+			"kind":       machineConfigurationKind,
+			"metadata":   map[string]any{"name": machineConfigurationName},
+			"spec": map[string]any{"nodeDisruptionPolicy": map[string]any{
+				"files": files,
+				"units": units,
+			}},
+		}}
+	}
+	file := func(path string, actions ...string) map[string]any {
+		acts := make([]any, 0, len(actions))
+		for _, action := range actions {
+			acts = append(acts, map[string]any{"type": action})
+		}
+		return map[string]any{"path": path, "actions": acts}
+	}
+	unit := func(name string, actions ...string) map[string]any {
+		acts := make([]any, 0, len(actions))
+		for _, action := range actions {
+			acts = append(acts, map[string]any{"type": action})
+		}
+		return map[string]any{"name": name, "actions": acts}
+	}
+
+	live := policy(
+		[]any{file("/usr/local/bin/tune", "Restart")},
+		[]any{unit("tune.service", "Restart"), unit("other.service", "Reload")},
+	)
+	desired := policy(
+		[]any{file("/usr/local/bin/tune", "None")},
+		[]any{unit("tune.service", "Restart")},
+	)
+	if got := nodeDisruptionPolicyChangeCount(desired, live); got != 2 {
+		t.Fatalf("change count = %d, want 2", got)
+	}
+	empty := policy([]any{}, []any{})
+	if got := nodeDisruptionPolicyChangeCount(empty, live); got != 3 {
+		t.Fatalf("prune change count = %d, want 3", got)
+	}
+	if got := nodeDisruptionPolicyChangeCount(desired, nil); got != 2 {
+		t.Fatalf("create change count = %d, want 2", got)
+	}
+	if got := nodeDisruptionPolicyChangeCount(desired, desired); got != 0 {
+		t.Fatalf("identical change count = %d, want 0", got)
+	}
+}
+
 func TestReconcileNodeDisruptionPoliciesDoesNotCreateEmptySingleton(t *testing.T) {
 	p := NewPatcher(fake.NewClientBuilder().Build(), nil, assets.NewLoaderFromFS(fstest.MapFS{}))
-	managed, err := p.ReconcileNodeDisruptionPolicies(
+	managed, _, err := p.ReconcileNodeDisruptionPolicies(
 		context.Background(), nil, nil, false,
 		pkgcontext.NewRenderContext(pkgcontext.NewMockHCO("kubevirt-hyperconverged", "openshift-cnv")),
 	)
@@ -212,7 +262,7 @@ func TestReconcileNodeDisruptionPoliciesDoesNotPruneUnmanagedSingleton(t *testin
 		}},
 	}}
 	p := NewPatcher(fake.NewClientBuilder().WithObjects(live).Build(), nil, assets.NewLoaderFromFS(fstest.MapFS{}))
-	managed, err := p.ReconcileNodeDisruptionPolicies(
+	managed, _, err := p.ReconcileNodeDisruptionPolicies(
 		context.Background(), nil, nil, false,
 		pkgcontext.NewRenderContext(pkgcontext.NewMockHCO("kubevirt-hyperconverged", "openshift-cnv")),
 	)
@@ -420,7 +470,7 @@ func TestAggregateNodeDisruptionPolicyOverridesBlockTombstoneRelease(t *testing.
 			live := desired()
 			live.SetAnnotations(annotations)
 			p := NewPatcher(fake.NewClientBuilder().WithObjects(live).Build(), nil, assets.NewLoaderFromFS(fstest.MapFS{}))
-			managed, err := p.reconcileAggregateNodeDisruptionPolicy(context.Background(), desired(), true)
+			managed, _, err := p.reconcileAggregateNodeDisruptionPolicy(context.Background(), desired(), true)
 			if err != nil {
 				t.Fatal(err)
 			}

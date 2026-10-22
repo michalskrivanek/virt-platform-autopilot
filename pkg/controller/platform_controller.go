@@ -436,9 +436,10 @@ func (r *PlatformReconciler) reconcileAssets(ctx context.Context, renderCtx *pkg
 		assetsToReconcile = append(assetsToReconcile, *asset)
 	}
 
+	ndpChanges := 0
 	if policyAssetsAvailable {
 		var err error
-		ndpManaged, err = r.patcher.ReconcileNodeDisruptionPolicies(ctx, allAssets, activeAssets, pruneTombstoneActions, renderCtx)
+		ndpManaged, ndpChanges, err = r.patcher.ReconcileNodeDisruptionPolicies(ctx, allAssets, activeAssets, pruneTombstoneActions, renderCtx)
 		if err != nil {
 			return false, fmt.Errorf("reconcile node disruption policies: %w", err)
 		}
@@ -450,6 +451,9 @@ func (r *PlatformReconciler) reconcileAssets(ctx context.Context, renderCtx *pkg
 		"total", len(assetsToReconcile),
 		"applied", appliedCount,
 	)
+	if ndpChanges > 0 {
+		logger.Info("Node Disruption Policy updated", "changes", ndpChanges)
+	}
 
 	// Record reconciliation event
 	if r.eventRecorder != nil && err == nil {

@@ -45,15 +45,14 @@ const (
 // contributed by another. Entries for inactive or root-excluded dependents are
 // omitted, so their later manual MachineConfig deletion follows MCO's default
 // reboot path rather than trying to restart a service that no longer exists.
-// ReconcileNodeDisruptionPolicies returns true when Autopilot controls the
-// singleton policy.
-func (p *Patcher) ReconcileNodeDisruptionPolicies(ctx context.Context, allAssets []assets.AssetMetadata, active map[string]bool, pruneTombstoneActions bool, renderCtx *pkgcontext.RenderContext) (bool, error) {
+// ReconcileNodeDisruptionPolicies returns whether Autopilot controls the
+// singleton policy and how many file/unit entries changed.
+func (p *Patcher) ReconcileNodeDisruptionPolicies(ctx context.Context, allAssets []assets.AssetMetadata, active map[string]bool, pruneTombstoneActions bool, renderCtx *pkgcontext.RenderContext) (bool, int, error) {
 	desired, allowCreate, err := p.aggregateNodeDisruptionPolicies(allAssets, active, pruneTombstoneActions, renderCtx)
 	if err != nil || desired == nil {
-		return false, err
+		return false, 0, err
 	}
-	managed, err := p.reconcileAggregateNodeDisruptionPolicy(ctx, desired, allowCreate)
-	return managed, err
+	return p.reconcileAggregateNodeDisruptionPolicy(ctx, desired, allowCreate)
 }
 
 // reconcileAggregateNodeDisruptionPolicy deliberately retains the live
@@ -62,7 +61,9 @@ func (p *Patcher) ReconcileNodeDisruptionPolicies(ctx context.Context, allAssets
 // singleton, so mode: unmanaged and ignore-fields must have the same meaning
 // as they do for ordinary assets. JSON patches are not allowed for this
 // node-level API, just as they are not allowed for MachineConfig.
-func (p *Patcher) reconcileAggregateNodeDisruptionPolicy(ctx context.Context, desired *unstructured.Unstructured, allowCreate bool) (bool, error) {
+// The second return value is the number of file/unit entry changes so callers
+// can log after other assets without changing apply order.
+func (p *Patcher) reconcileAggregateNodeDisruptionPolicy(ctx context.Context, desired *unstructured.Unstructured, allowCreate bool) (bool, int, error) {
 	live := &unstructured.Unstructured{}
 	live.SetGroupVersionKind(desired.GroupVersionKind())
 	err := p.applier.Get(ctx, client.ObjectKey{Name: desired.GetName()}, live)
@@ -71,19 +72,20 @@ func (p *Patcher) reconcileAggregateNodeDisruptionPolicy(ctx context.Context, de
 		// but must not create the singleton on clusters that never enabled an
 		// NDP-dependent feature.
 		if !allowCreate {
-			return false, nil
+			return false, 0, nil
 		}
+		changes := nodeDisruptionPolicyChangeCount(desired, nil)
 		_, err = p.applier.Apply(ctx, desired, true)
-		return err == nil, err
+		return err == nil, changes, err
 	}
 	if err != nil {
-		return false, fmt.Errorf("read aggregate node disruption policy: %w", err)
+		return false, 0, fmt.Errorf("read aggregate node disruption policy: %w", err)
 	}
 	if !allowCreate && !HasManagedByLabel(live) {
-		return false, nil
+		return false, 0, nil
 	}
 	if overrides.IsUnmanaged(live) {
-		return false, nil
+		return false, 0, nil
 	}
 
 	annotations := live.GetAnnotations()
@@ -98,10 +100,62 @@ func (p *Patcher) reconcileAggregateNodeDisruptionPolicy(ctx context.Context, de
 	var maskErr error
 	desired, maskErr = overrides.MaskIgnoredFields(desired, live)
 	if maskErr != nil {
-		return false, fmt.Errorf("mask aggregate node disruption policy ignored fields: %w", maskErr)
+		return false, 0, fmt.Errorf("mask aggregate node disruption policy ignored fields: %w", maskErr)
 	}
+	changes := nodeDisruptionPolicyChangeCount(desired, live)
 	_, err = p.applier.Apply(ctx, desired, true)
-	return tombstoneSafe && err == nil, err
+	return tombstoneSafe && err == nil, changes, err
+}
+
+// nodeDisruptionPolicyChangeCount returns how many file/unit entries differ
+// between desired and live. Each added, removed, or modified keyed entry
+// counts as one change so a multi-entry aggregate update is visible as
+// changes>1 rather than a single opaque apply.
+func nodeDisruptionPolicyChangeCount(desired, live *unstructured.Unstructured) int {
+	changes := nodeDisruptionPolicyKeyedEntryChanges(desired, live, "files", "path")
+	changes += nodeDisruptionPolicyKeyedEntryChanges(desired, live, "units", "name")
+	return changes
+}
+
+func nodeDisruptionPolicyKeyedEntryChanges(desired, live *unstructured.Unstructured, field, identifier string) int {
+	desiredEntries := nodeDisruptionPolicyEntryIndex(desired, field, identifier)
+	liveEntries := nodeDisruptionPolicyEntryIndex(live, field, identifier)
+	changes := 0
+	for key, want := range desiredEntries {
+		got, found := liveEntries[key]
+		if !found || !reflect.DeepEqual(want, got) {
+			changes++
+		}
+	}
+	for key := range liveEntries {
+		if _, found := desiredEntries[key]; !found {
+			changes++
+		}
+	}
+	return changes
+}
+
+func nodeDisruptionPolicyEntryIndex(obj *unstructured.Unstructured, field, identifier string) map[string]map[string]any {
+	out := map[string]map[string]any{}
+	if obj == nil {
+		return out
+	}
+	entries, found, err := unstructured.NestedSlice(obj.Object, "spec", "nodeDisruptionPolicy", field)
+	if err != nil || !found {
+		return out
+	}
+	for _, entry := range entries {
+		entryMap, ok := entry.(map[string]any)
+		if !ok {
+			continue
+		}
+		key, found, err := unstructured.NestedString(entryMap, identifier)
+		if err != nil || !found || key == "" {
+			continue
+		}
+		out[key] = entryMap
+	}
+	return out
 }
 
 // NodeDisruptionPolicyGenerationObserved reports whether MCO has processed the
