@@ -374,6 +374,12 @@ func (p *Patcher) ReconcileAsset(ctx context.Context, assetMeta *assets.AssetMet
 	// mirroring what Applier.Apply() does before the actual SSA apply.
 	// Without this the label would always appear as a spurious diff.
 	ensureManagedByLabel(desired)
+	// Preserve the live admin coalescing bypass before SSA drift detection.
+	// The rendered template never carries it; copying only inside coalescing
+	// (after drift) made every reconcile look drifted and re-apply the MC.
+	if liveExists && isMachineConfig(desired) {
+		p.copyMachineConfigBypassAnnotation(desired, live)
+	}
 
 	hasDrift := false
 	if liveExists {
