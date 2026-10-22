@@ -156,7 +156,7 @@
     },
     {
       "name": "VM drain shutdown inhibitor",
-      "description": "Attempts to gracefully shutdown KubeVirt VMs before allowing the node to shut down",
+      "description": "Attempts to gracefully shutdown KubeVirt VMs before allowing the node to shut down. Does not require node reboot.",
       "maturity": "DP",
       "install": "opt-in",
       "opt_in": "platform.kubevirt.io/enable-vm-drain-shutdown-inhibitor=true"

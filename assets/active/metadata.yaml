@@ -1079,12 +1079,20 @@ assets:
     reconcile_order: 3
     conditions: *kubevirt-metrics-exporter-conditions
   
+  - name: vm-drain-shutdown-inhibitor-node-disruption-policy
+    path: active/machine-config/99-vm-drain-shutdown-inhibitor-node-disruption-policy.yaml
+    phase: 2
+    install: opt-in
+    component: MachineConfiguration
+    reconcile_order: 1
   - name: vm-drain-shutdown-inhibitor
     path: active/machine-config/99-vm-drain-shutdown-inhibitor.yaml.tpl
     phase: 2
     install: opt-in
     component: MachineConfig
-    reconcile_order: 1
+    reconcile_order: 2
+    node_disruption_policy:
+      asset: vm-drain-shutdown-inhibitor-node-disruption-policy
     template_params:
       role: worker
     conditions:
@@ -1097,7 +1105,9 @@ assets:
     phase: 2
     install: opt-in
     component: MachineConfig
-    reconcile_order: 1
+    reconcile_order: 2
+    node_disruption_policy:
+      asset: vm-drain-shutdown-inhibitor-node-disruption-policy
     template_params:
       role: master
     conditions:
@@ -1278,6 +1288,11 @@ features:
       - Storage Based Remediation Operator
 
   - name: VM drain shutdown inhibitor
-    description: Attempts to gracefully shutdown KubeVirt VMs before allowing the node to shut down
+    description: >-
+      Attempts to gracefully shutdown KubeVirt VMs before allowing the
+      node to shut down. Does not require node reboot.
     maturity: dp
-    assets: [vm-drain-shutdown-inhibitor, vm-drain-shutdown-inhibitor-master]
+    assets:
+      - vm-drain-shutdown-inhibitor-node-disruption-policy
+      - vm-drain-shutdown-inhibitor
+      - vm-drain-shutdown-inhibitor-master
