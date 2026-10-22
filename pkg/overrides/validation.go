@@ -46,7 +46,8 @@ var (
 	// These resources have elevated privileges or control cluster security
 	sensitiveKinds = map[string]bool{
 		// Machine configuration - controls node-level config
-		"MachineConfig": true,
+		"MachineConfig":        true,
+		"MachineConfiguration": true,
 
 		// RBAC resources - control permissions
 		"ClusterRole":        true,

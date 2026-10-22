@@ -181,9 +181,14 @@ func (r *PlatformReconciler) Reconcile(ctx context.Context, req ctrl.Request) (c
 		return ctrl.Result{RequeueAfter: 5 * time.Minute}, nil
 	}
 
-	// Step 0: Process tombstones FIRST (before HCO reconciliation)
+	// Step 0: Process ordinary tombstones FIRST (before HCO reconciliation).
+	// MachineConfig tombstones are deliberately deferred: an NDP-dependent
+	// MachineConfig can only be deleted after MCO has observed the aggregate
+	// policy generation that drops its actions.
 	logger.Info("Processing tombstones")
-	deletedCount, err := r.tombstoneReconciler.ReconcileTombstones(ctx, hco)
+	deletedCount, err := r.tombstoneReconciler.ReconcileTombstonesMatching(ctx, hco, func(ts assets.TombstoneMetadata) bool {
+		return !isMachineConfigTombstone(ts)
+	})
 	if err != nil {
 		// Log error but don't fail reconciliation - tombstone cleanup is best-effort
 		logger.Error(err, "Failed to process tombstones (continuing with reconciliation)")
@@ -215,18 +220,52 @@ func (r *PlatformReconciler) Reconcile(ctx context.Context, req ctrl.Request) (c
 	r.updateConditionEvaluator(hco, renderCtx)
 
 	metricErr := r.reconcileDependencyMetrics(ctx)
+	machineConfigNDPAction, err := r.tombstoneReconciler.MachineConfigTombstonesHaveEffectiveNodeDisruptionPolicy(ctx)
+	if err != nil {
+		return ctrl.Result{}, fmt.Errorf("check MachineConfig tombstone node disruption policy actions: %w", err)
+	}
 
 	// Step 3: Reconcile all other assets in reconcile_order
 	logger.Info("Reconciling platform assets")
-	if err := r.reconcileAssets(ctx, renderCtx); err != nil {
+	ndpManaged, err := r.reconcileAssets(ctx, renderCtx, machineConfigNDPAction)
+	if err != nil {
 		logger.Error(err, "Failed to reconcile assets")
 		return ctrl.Result{}, err
+	}
+
+	if machineConfigNDPAction {
+		if !ndpManaged {
+			logger.Info("Deferring MachineConfig tombstones because the node disruption policy is not managed")
+			return ctrl.Result{RequeueAfter: 5 * time.Minute}, nil
+		}
+		observed, err := r.patcher.NodeDisruptionPolicyGenerationObserved(ctx)
+		if err != nil {
+			return ctrl.Result{}, fmt.Errorf("observe node disruption policy before MachineConfig tombstones: %w", err)
+		}
+		if !observed {
+			logger.Info("Deferring MachineConfig tombstones until MCO observes node disruption policy generation")
+			return ctrl.Result{RequeueAfter: 5 * time.Second}, nil
+		}
+		stillEffective, err := r.tombstoneReconciler.MachineConfigTombstonesHaveEffectiveNodeDisruptionPolicy(ctx)
+		if err != nil {
+			return ctrl.Result{}, fmt.Errorf("check MachineConfig tombstone node disruption policy actions after MCO observation: %w", err)
+		}
+		if stillEffective {
+			logger.Info("Deferring MachineConfig tombstones while MCO retains their node disruption policy actions")
+			return ctrl.Result{RequeueAfter: 5 * time.Second}, nil
+		}
+	}
+
+	deletedCount, err = r.tombstoneReconciler.ReconcileTombstonesMatching(ctx, hco, isMachineConfigTombstone)
+	if err != nil {
+		logger.Error(err, "Failed to process MachineConfig tombstones")
+	} else if deletedCount > 0 {
+		logger.Info("MachineConfig tombstone processing completed", "deleted", deletedCount)
 	}
 	if metricErr != nil {
 		logger.Error(metricErr, "Dependency metric refresh incomplete, retrying reconciliation")
 		return ctrl.Result{}, metricErr
 	}
-
 	logger.Info("Successfully reconciled virt platform")
 	return ctrl.Result{RequeueAfter: 5 * time.Minute}, nil
 }
@@ -333,14 +372,23 @@ func (r *PlatformReconciler) assetCRDsAvailable(ctx context.Context, asset *asse
 }
 
 // reconcileAssets reconciles all non-HCO assets.
-func (r *PlatformReconciler) reconcileAssets(ctx context.Context, renderCtx *pkgcontext.RenderContext) error {
+func (r *PlatformReconciler) reconcileAssets(ctx context.Context, renderCtx *pkgcontext.RenderContext, pruneTombstoneActions bool) (bool, error) {
 	logger := log.FromContext(ctx)
 
 	// Get all assets sorted by reconcile_order (HCO should be 0, others 1+)
 	allAssets := r.registry.ListAssetsByReconcileOrder()
+	policyAssetNames := map[string]bool{}
+	for i := range allAssets {
+		if dependency := allAssets[i].NodeDisruptionPolicy; dependency != nil && dependency.PolicyAsset() != nil {
+			policyAssetNames[dependency.PolicyAsset().Name] = true
+		}
+	}
 
 	// Filter out HCO (already reconciled) and check conditions
 	var assetsToReconcile []assets.AssetMetadata
+	activeAssets := map[string]bool{}
+	policyAssetsAvailable := true
+	ndpManaged := false
 	for i := range allAssets {
 		asset := &allAssets[i]
 
@@ -350,6 +398,12 @@ func (r *PlatformReconciler) reconcileAssets(ctx context.Context, renderCtx *pkg
 		}
 
 		if !r.assetCRDsAvailable(ctx, asset, renderCtx) {
+			if policyAssetNames[asset.Name] {
+				// Never partially reconcile the singleton: without a policy
+				// template's API we cannot safely decide which of its keyed
+				// entries remain owned.
+				policyAssetsAvailable = false
+			}
 			r.patcher.CleanupExcludedAsset(asset, renderCtx)
 			continue
 		}
@@ -370,8 +424,24 @@ func (r *PlatformReconciler) reconcileAssets(ctx context.Context, renderCtx *pkg
 			r.patcher.CleanupExcludedAsset(asset, renderCtx)
 			continue
 		}
+		activeAssets[asset.Name] = true
+
+		// MachineConfiguration is a singleton. Its node disruption policy entries
+		// are reconciled as one aggregate below so independent policy templates do
+		// not remove one another's SSA-managed map-list entries.
+		if policyAssetNames[asset.Name] {
+			continue
+		}
 
 		assetsToReconcile = append(assetsToReconcile, *asset)
+	}
+
+	if policyAssetsAvailable {
+		var err error
+		ndpManaged, err = r.patcher.ReconcileNodeDisruptionPolicies(ctx, allAssets, activeAssets, pruneTombstoneActions, renderCtx)
+		if err != nil {
+			return false, fmt.Errorf("reconcile node disruption policies: %w", err)
+		}
 	}
 
 	// Reconcile all applicable assets
@@ -386,7 +456,11 @@ func (r *PlatformReconciler) reconcileAssets(ctx context.Context, renderCtx *pkg
 		r.eventRecorder.ReconcileSucceeded(renderCtx.HCO, appliedCount, len(assetsToReconcile))
 	}
 
-	return err
+	return ndpManaged, err
+}
+
+func isMachineConfigTombstone(ts assets.TombstoneMetadata) bool {
+	return ts.GVK.Group == "machineconfiguration.openshift.io" && ts.GVK.Kind == "MachineConfig"
 }
 
 // updateConditionEvaluator updates the condition evaluator with current context

@@ -171,7 +171,7 @@ func buildMetricsServerOptions(metricsAddr string, caPool *metricstls.ClientCAPo
 
 // cacheByObjectExemptions builds the per-type cache exemptions that override the
 // managed-by DefaultLabelSelector for unlabeled objects the operator must observe.
-func cacheByObjectExemptions(hcoForCache, kvForCache, mcpForCache, apiServerForCache client.Object, apiServerCRDInstalled, mcpCRDInstalled bool) map[client.Object]cache.ByObject {
+func cacheByObjectExemptions(hcoForCache, kvForCache, mcpForCache, machineConfigurationForCache, apiServerForCache client.Object, apiServerCRDInstalled, mcpCRDInstalled, machineConfigurationCRDInstalled bool) map[client.Object]cache.ByObject {
 	byObject := map[client.Object]cache.ByObject{
 		&storagev1.StorageClass{}: {
 			Label: labels.Everything(),
@@ -206,6 +206,12 @@ func cacheByObjectExemptions(hcoForCache, kvForCache, mcpForCache, apiServerForC
 	}
 	if mcpCRDInstalled {
 		byObject[mcpForCache] = cache.ByObject{Label: labels.Everything()}
+	}
+	// MachineConfiguration/cluster is an unlabeled MCO singleton. Cache it so
+	// its status update immediately releases NDP-dependent MachineConfigs rather
+	// than relying on the periodic reconciliation interval.
+	if machineConfigurationCRDInstalled {
+		byObject[machineConfigurationForCache] = cache.ByObject{Label: labels.Everything()}
 	}
 	// Watch the cluster APIServer CR (unlabeled, cluster-scoped singleton) so the
 	// metrics TLS security profile is refreshed on change instead of polled
@@ -261,6 +267,9 @@ func runController(
 	mcpForCache := &unstructured.Unstructured{}
 	mcpForCache.SetAPIVersion("machineconfiguration.openshift.io/v1")
 	mcpForCache.SetKind("MachineConfigPool")
+	machineConfigurationForCache := &unstructured.Unstructured{}
+	machineConfigurationForCache.SetAPIVersion("operator.openshift.io/v1")
+	machineConfigurationForCache.SetKind("MachineConfiguration")
 
 	// Create unstructured object for the cluster APIServer CR cache configuration.
 	// It backs the metrics-TLS watch (MetricsTLSReconciler); the informer is only
@@ -299,10 +308,16 @@ func runController(
 		setupLog.Error(err, "failed to check for MachineConfigPool CRD; MachineConfig update coalescing watch will be disabled")
 		mcpCRDInstalled = false
 	}
+	machineConfigurationCRDInstalled, err := util.NewCRDChecker(bootstrapClient).IsCRDInstalled(
+		context.Background(), "machineconfigurations.operator.openshift.io")
+	if err != nil {
+		setupLog.Error(err, "failed to check for MachineConfiguration CRD; NDP readiness will use periodic reconciliation")
+		machineConfigurationCRDInstalled = false
+	}
 
 	metricsOpts, secureMetrics := buildMetricsServerOptions(metricsAddr, caPool)
 
-	byObject := cacheByObjectExemptions(hcoForCache, kvForCache, mcpForCache, apiServerForCache, apiServerCRDInstalled, mcpCRDInstalled)
+	byObject := cacheByObjectExemptions(hcoForCache, kvForCache, mcpForCache, machineConfigurationForCache, apiServerForCache, apiServerCRDInstalled, mcpCRDInstalled, machineConfigurationCRDInstalled)
 
 	mgr, err := ctrl.NewManager(restConfig, ctrl.Options{
 		Scheme:                 scheme,
