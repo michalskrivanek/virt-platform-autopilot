@@ -455,12 +455,20 @@ assets:
   # Gated on BOTH the KubeVirt CPUManager feature gate (VM CPU pinning) AND an
   # explicit opt-in annotation: these kubelet perf tunings change node-level
   # reserved resources and require deliberate opt-in (see CNV-96059).
+  - name: kubelet-cpu-manager-node-disruption-policy
+    path: active/machine-config/07-kubelet-cpu-manager-node-disruption-policy.yaml
+    phase: 1
+    install: opt-in
+    component: MachineConfiguration
+    reconcile_order: 1
   - name: kubelet-cpu-manager
     path: active/machine-config/07-kubelet-cpu-manager.yaml.tpl
     phase: 1
     install: opt-in
     component: MachineConfig
-    reconcile_order: 1
+    reconcile_order: 2
+    node_disruption_policy:
+      asset: kubelet-cpu-manager-node-disruption-policy
     conditions:
       - type: kubevirt-feature-gate
         value: CPUManager
@@ -1226,9 +1234,13 @@ features:
     assets: [pci-passthrough]
 
   - name: CPU Manager
-    description: Dedicated CPU pinning for guaranteed QoS workloads
+    description: >-
+      Dedicated CPU pinning for guaranteed QoS workloads. Does not require
+      node reboot; restarts kubelet.
     maturity: dp
-    assets: [kubelet-cpu-manager]
+    assets:
+      - kubelet-cpu-manager-node-disruption-policy
+      - kubelet-cpu-manager
 
   - name: SCSI Persistent Reservations
     description: >-
