@@ -182,13 +182,22 @@ assets:
     reconcile_order: 2
     conditions: *ksm-zero-only-conditions
 
+  - name: thp-tuning-node-disruption-policy
+    group: thp-tuning
+    path: active/machine-config/06-thp-tuning-node-disruption-policy.yaml
+    phase: 1
+    install: opt-in
+    component: MachineConfiguration
+    reconcile_order: 1
   - name: thp-tuning
     group: thp-tuning
     path: active/machine-config/06-thp-tuning.yaml.tpl
     phase: 1
     install: opt-in
     component: MachineConfig
-    reconcile_order: 1
+    reconcile_order: 2
+    node_disruption_policy:
+      asset: thp-tuning-node-disruption-policy
     template_params:
       role: worker
     conditions:
@@ -202,7 +211,9 @@ assets:
     phase: 1
     install: opt-in
     component: MachineConfig
-    reconcile_order: 1
+    reconcile_order: 2
+    node_disruption_policy:
+      asset: thp-tuning-node-disruption-policy
     template_params:
       role: master
     conditions:
@@ -1250,9 +1261,10 @@ features:
     description: >-
       Node-level THP madvise/defrag/shmem tuning, shrink_underused=0 on
       kernels that support it, khugepaged scan rates, and max_ptes_none
-      coordination with KSM. Optional sub-feature:
-      enable-thp-tuning-kernelcore sets kernelcore=2G and movablecore=97%
-      (max(2G, 3% MemTotal) ZONE_MOVABLE split per node); requires reboot.
+      coordination with KSM. Does not require node reboot. Optional
+      sub-feature: enable-thp-tuning-kernelcore sets kernelcore=2G and
+      movablecore=97% (max(2G, 3% MemTotal) ZONE_MOVABLE split per node);
+      requires reboot.
     maturity: dp
     groups: [thp-tuning]
 
