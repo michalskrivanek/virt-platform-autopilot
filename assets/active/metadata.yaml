@@ -462,12 +462,20 @@ assets:
 
   # Phase 1: Opt-in - configures multipath to persist SCSI PR keys in a file
   # on every worker that can host VMs using shared LUNs.
+  - name: scsi-persistent-reservations-node-disruption-policy
+    path: active/machine-config/08-scsi-persistent-reservations-node-disruption-policy.yaml
+    phase: 1
+    install: opt-in
+    component: MachineConfiguration
+    reconcile_order: 1
   - name: scsi-persistent-reservations
     path: active/machine-config/08-scsi-persistent-reservations.yaml.tpl
     phase: 1
     install: opt-in
     component: MachineConfig
-    reconcile_order: 1
+    reconcile_order: 2
+    node_disruption_policy:
+      asset: scsi-persistent-reservations-node-disruption-policy
     template_params:
       role: worker
     conditions:
@@ -480,7 +488,9 @@ assets:
     phase: 1
     install: opt-in
     component: MachineConfig
-    reconcile_order: 1
+    reconcile_order: 2
+    node_disruption_policy:
+      asset: scsi-persistent-reservations-node-disruption-policy
     template_params:
       role: master
     conditions:
@@ -1209,9 +1219,14 @@ features:
     assets: [kubelet-cpu-manager]
 
   - name: SCSI Persistent Reservations
-    description: Configures worker-node multipath to persist SCSI persistent-reservation keys for VMs sharing LUN-backed disks
+    description: >-
+      Configures worker-node multipath to persist SCSI persistent-reservation
+      keys for VMs sharing LUN-backed disks. Does not require node reboot.
     maturity: dp
-    assets: [scsi-persistent-reservations, scsi-persistent-reservations-master]
+    assets:
+      - scsi-persistent-reservations-node-disruption-policy
+      - scsi-persistent-reservations
+      - scsi-persistent-reservations-master
 
   - name: MTV Operator
     description: Migration Toolkit for Virtualization

@@ -48,9 +48,10 @@ spec:
         path: /etc/multipath/conf.d/reservation.conf
 ```
 
-The Machine Config Operator rolls out the change and reboots affected workers.
-Wait until the worker MachineConfigPool has completed its update before restarting
-the VMs and retrying shared-disk validation:
+The Machine Config Operator applies the change without a node reboot: a Node
+Disruption Policy reloads `multipathd` (`multipathd reconfigure`) after the
+drop-in is written. Wait until the worker MachineConfigPool has completed its
+update before restarting the VMs and retrying shared-disk validation:
 
 ```bash
 oc get mcp worker
