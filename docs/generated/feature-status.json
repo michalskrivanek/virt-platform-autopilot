@@ -60,7 +60,7 @@
     },
     {
       "name": "Kubelet Performance",
-      "description": "Optimized kubelet settings for virtualization workloads",
+      "description": "Optimized kubelet settings for virtualization workloads. Does not require node reboot; restarts kubelet.",
       "maturity": "TP",
       "install": "opt-in",
       "opt_in": "platform.kubevirt.io/enable-kubelet-performance-settings=true"
