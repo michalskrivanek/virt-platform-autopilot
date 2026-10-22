@@ -216,6 +216,9 @@ func machineConfigCoalescingBypassValue(obj *unstructured.Unstructured) (bool, b
 	return bypass, err == nil
 }
 
+// copyMachineConfigBypassAnnotation mirrors the live admin bypass onto desired.
+// Callers must invoke this before drift detection: the rendered template omits
+// the annotation, so a late copy leaves a permanent desired:null vs live diff.
 func (p *Patcher) copyMachineConfigBypassAnnotation(desired, live *unstructured.Unstructured) {
 	if value, ok := live.GetAnnotations()[MachineConfigCoalescingBypassAnnotation]; ok {
 		annotations := desired.GetAnnotations()

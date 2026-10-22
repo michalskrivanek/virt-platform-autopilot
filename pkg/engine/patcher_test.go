@@ -121,6 +121,71 @@ func TestDriftDetectionFailureSetsComplianceToZero(t *testing.T) {
 	}
 }
 
+// capturingDriftChecker records the desired object seen by DetectDrift.
+type capturingDriftChecker struct {
+	desired *unstructured.Unstructured
+}
+
+func (c *capturingDriftChecker) DetectDrift(_ context.Context, desired, _ *unstructured.Unstructured) (bool, error) {
+	c.desired = desired.DeepCopy()
+	return false, nil
+}
+
+// TestReconcileAssetPreservesMachineConfigBypassBeforeDrift ensures the live
+// admin coalescing bypass is copied onto desired before SSA drift detection.
+// Without that ordering, every reconcile reports drift on desired:null vs
+// live:"true" and re-applies the MachineConfig.
+func TestReconcileAssetPreservesMachineConfigBypassBeforeDrift(t *testing.T) {
+	loader := pkgassets.NewLoader()
+	renderer := NewRenderer(loader)
+
+	assetMeta := &pkgassets.AssetMetadata{
+		Name:           "psi-enable",
+		Path:           "active/machine-config/04-psi-enable.yaml.tpl",
+		Component:      "MachineConfig",
+		TemplateParams: map[string]string{"role": "worker"},
+	}
+
+	hco := pkgcontext.NewMockHCO("kubevirt-hyperconverged", "kubevirt-hyperconverged")
+	renderCtx := pkgcontext.NewRenderContext(hco)
+
+	desired, err := renderer.RenderAsset(assetMeta, renderCtx)
+	if err != nil {
+		t.Fatalf("failed to render asset: %v", err)
+	}
+	if _, ok := desired.GetAnnotations()[MachineConfigCoalescingBypassAnnotation]; ok {
+		t.Fatal("rendered MachineConfig unexpectedly carries bypass annotation")
+	}
+
+	live := desired.DeepCopy()
+	live.SetAnnotations(map[string]string{MachineConfigCoalescingBypassAnnotation: "true"})
+	fakeClient := fake.NewClientBuilder().WithObjects(live).Build()
+	capturing := &capturingDriftChecker{}
+
+	p := &Patcher{
+		renderer:          renderer,
+		applier:           NewApplier(fakeClient, nil),
+		driftDetector:     capturing,
+		throttle:          throttling.NewTokenBucket(),
+		thrashingDetector: throttling.NewThrashingDetector(),
+		client:            fakeClient,
+	}
+
+	applied, reconcileErr := p.ReconcileAsset(context.Background(), assetMeta, renderCtx)
+	if reconcileErr != nil {
+		t.Fatalf("ReconcileAsset: %v", reconcileErr)
+	}
+	if applied {
+		t.Fatal("expected no apply when only the live bypass annotation differs")
+	}
+	if capturing.desired == nil {
+		t.Fatal("DetectDrift was not called")
+	}
+	if got := capturing.desired.GetAnnotations()[MachineConfigCoalescingBypassAnnotation]; got != "true" {
+		t.Fatalf("desired bypass at drift detection = %q, want true", got)
+	}
+}
+
 func TestIsNamespaceNotFound(t *testing.T) {
 	tests := []struct {
 		name string
