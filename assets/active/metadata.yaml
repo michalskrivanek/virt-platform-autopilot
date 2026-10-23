@@ -1238,7 +1238,7 @@ features:
   - name: CPU Manager
     description: >-
       Dedicated CPU pinning for guaranteed QoS workloads. Does not require
-      node reboot; restarts kubelet.
+      node reboot; drains the node, restarts kubelet.
     maturity: dp
     assets:
       - kubelet-cpu-manager-node-disruption-policy

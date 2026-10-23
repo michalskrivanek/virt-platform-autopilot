@@ -67,7 +67,7 @@
     },
     {
       "name": "CPU Manager",
-      "description": "Dedicated CPU pinning for guaranteed QoS workloads. Does not require node reboot; restarts kubelet.",
+      "description": "Dedicated CPU pinning for guaranteed QoS workloads. Does not require node reboot; drains the node, restarts kubelet.",
       "maturity": "DP",
       "install": "opt-in",
       "opt_in": "kubevirtFeatureGate:CPUManager, platform.kubevirt.io/enable-cpu-manager-perf-tunings=true"

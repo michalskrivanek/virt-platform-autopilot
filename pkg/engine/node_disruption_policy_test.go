@@ -622,7 +622,7 @@ func TestNodeDisruptionPolicyCoversMachineConfig(t *testing.T) {
 // Coverage is bidirectional: every MachineConfig file/unit must appear in its
 // policy, and every policy file/unit must appear on at least one dependent so
 // removed Ignition paths cannot leave stale Node Disruption Policy entries.
-func TestCatalogNodeDisruptionPoliciesAreValid(t *testing.T) {
+func TestCatalogNodeDisruptionPoliciesAreValid(t *testing.T) { //nolint:gocognit // catalog walk is inherently nested
 	loader := assets.NewLoader()
 	registry, err := assets.NewRegistry(loader)
 	if err != nil {
