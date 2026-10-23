@@ -6,6 +6,27 @@ as Windows Server Failover Clusters (WSFC).
 
 See: https://access.redhat.com/solutions/7106114
 
+## Prerequisites
+
+This feature is a **drop-in only**: it writes
+`/etc/multipath/conf.d/reservation.conf` and asks the Machine Config Operator to
+`Reload` `multipathd.service`. It does **not** install or enable the multipath
+stack.
+
+**Hard requirement:** every targeted node must already have a main multipath
+configuration at `/etc/multipath.conf`.
+
+Before enabling the annotation, confirm on each worker (and schedulable master)
+that will host shared-LUN VMs:
+
+```bash
+oc debug node/<node> -- chroot /host test -f /etc/multipath.conf
+oc debug node/<node> -- chroot /host systemctl is-active multipathd.service
+```
+
+Both must succeed (`/etc/multipath.conf` present and `multipathd` active). Do not
+enable this feature on clusters that do not already use device-mapper multipath.
+
 ## Configure multipath reservation-key persistence
 
 When enabled, this feature configures `reservation_key file` in the multipath
@@ -49,9 +70,11 @@ spec:
 ```
 
 The Machine Config Operator applies the change without a node reboot: a Node
-Disruption Policy reloads `multipathd` (`multipathd reconfigure`) after the
-drop-in is written. Wait until the worker MachineConfigPool has completed its
-update before restarting the VMs and retrying shared-disk validation:
+Disruption Policy reloads `multipathd` (`systemctl reload` →
+`multipathd reconfigure`) after the drop-in is written. That reload only works
+when `multipathd` is already active (see [Prerequisites](#prerequisites)).
+Wait until the worker MachineConfigPool has completed its update before
+restarting the VMs and retrying shared-disk validation:
 
 ```bash
 oc get mcp worker

@@ -478,6 +478,8 @@ assets:
 
   # Phase 1: Opt-in - configures multipath to persist SCSI PR keys in a file
   # on every worker that can host VMs using shared LUNs.
+  # Hard requirement: /etc/multipath.conf must already exist so multipathd can
+  # start; NDP Reload fails if the unit is inactive (see docs/scsi-persistent-reservations.md).
   - name: scsi-persistent-reservations-node-disruption-policy
     path: active/machine-config/08-scsi-persistent-reservations-node-disruption-policy.yaml
     phase: 1
@@ -1246,6 +1248,8 @@ features:
     description: >-
       Configures worker-node multipath to persist SCSI persistent-reservation
       keys for VMs sharing LUN-backed disks. Does not require node reboot.
+      Requires an existing /etc/multipath.conf so multipathd is active before
+      enable.
     maturity: dp
     assets:
       - scsi-persistent-reservations-node-disruption-policy

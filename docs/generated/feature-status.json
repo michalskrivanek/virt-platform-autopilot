@@ -142,7 +142,7 @@
     },
     {
       "name": "SCSI Persistent Reservations",
-      "description": "Configures worker-node multipath to persist SCSI persistent-reservation keys for VMs sharing LUN-backed disks. Does not require node reboot.",
+      "description": "Configures worker-node multipath to persist SCSI persistent-reservation keys for VMs sharing LUN-backed disks. Does not require node reboot. Requires an existing /etc/multipath.conf so multipathd is active before enable.",
       "maturity": "DP",
       "install": "opt-in",
       "opt_in": "platform.kubevirt.io/enable-scsi-persistent-reservations=true"
